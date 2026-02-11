@@ -30,7 +30,7 @@ export default function Login() {
       if (error) {
         setErrorMsg(error.message)
       } else {
-        alert('¡Registro exitoso! Si tienes la confirmación de email activa, revisa tu correo.')
+        alert('¡Estas en la cima! Si tienes la confirmación de email activa, revisa tu correo.')
         if (data.session) navigate('/') 
       }
 
@@ -69,7 +69,7 @@ export default function Login() {
 
         <div className="p-8">
           <h2 className="text-2xl font-bold mb-6 text-center text-emerald-400">
-            {isRegister ? 'Crea tu cuenta' : 'Bienvenido de nuevo'}
+            {isRegister ? 'Crea tu cuenta wanaso' : 'AESF P2P - c Login'}
           </h2>
 
           <form onSubmit={handleAuth} className="space-y-4">
@@ -93,7 +93,7 @@ export default function Login() {
                 type="email"
                 required
                 className="w-full px-4 py-2 bg-gray-700 rounded border border-gray-600 focus:border-emerald-500 focus:outline-none"
-                placeholder="correo@ejemplo.com"
+                placeholder="mongoldeportes@gmail.com (cuaquier correo falso no sean sanos)"
                 value={email}
                 onChange={(e) => setEmail(e.target.value.trim())}
               />

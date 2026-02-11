@@ -10,14 +10,11 @@ const createSupabaseClient = () => {
       autoRefreshToken: true,
       detectSessionInUrl: true,
     },
-    // CONFIGURACIÓN NUEVA PARA EVITAR TIMED_OUT
     realtime: {
       params: {
         eventsPerSecond: 10,
       },
-      // Damos 30 segundos antes de rendirse (por defecto son 10)
       timeout: 30000, 
-      // Latidos del corazón más frecuentes para mantener la conexión viva
       heartbeatIntervalMs: 5000, 
     },
   })
