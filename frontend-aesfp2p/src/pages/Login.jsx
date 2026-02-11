@@ -30,7 +30,8 @@ export default function Login() {
       if (error) {
         setErrorMsg(error.message)
       } else {
-        alert('¡Estas en la cima! Si tienes la confirmación de email activa, revisa tu correo.')
+        alert('¡Estas en la cima! de mi pinga')
+        console.log('Revisar el correo por si pusiste tu correo real')
         if (data.session) navigate('/') 
       }
 
