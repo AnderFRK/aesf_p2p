@@ -11,8 +11,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     params: {
       eventsPerSecond: 10,
     },
-    // ESTA ES LA CLAVE:
-    timeout: 30000, // Esperar 30 segundos en lugar de 10
+    timeout: 30000,
     headers: {
         'apikey': supabaseAnonKey,
     }
