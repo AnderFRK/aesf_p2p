@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import Peer from 'peerjs';
-import { supabase } from '../../../lib/supabase'; // Ajusta la ruta según tu estructura
+import { supabase } from '../../../lib/supabase'; 
 
 export function useVideoLogic(roomId, session, onLeave) {
   const [myPeerId, setMyPeerId] = useState('');
@@ -20,6 +20,9 @@ export function useVideoLogic(roomId, session, onLeave) {
   const streamRef = useRef(null);
   const callsRef = useRef({});
   const retryInterval = useRef(null);
+  
+  // NUEVO: Evita llamar dos veces a la misma persona
+  const pendingCalls = useRef({}); 
 
   const myUsername = session.user.user_metadata?.username || 'Usuario';
   const myAvatar = session.user.user_metadata?.avatar_url;
@@ -40,27 +43,38 @@ export function useVideoLogic(roomId, session, onLeave) {
         streamRef.current = stream;
 
         setStatusMsg('2. Conectando a PeerJS (Google STUN)...');
+        
+        // CONFIGURACIÓN DE ESTABILIDAD
         const peer = new Peer(undefined, {
+          debug: 1, // Muestra errores leves
           config: {
             iceServers: [
               { urls: 'stun:stun.l.google.com:19302' },
               { urls: 'stun:stun1.l.google.com:19302' },
             ]
-          }
+          },
+          // Ping para mantener la conexión viva (Heartbeat de PeerJS)
+          pingInterval: 5000, 
         });
+        
         peerRef.current = peer;
 
         peer.on('open', (id) => {
           if (!isMounted) return;
-          console.log("PeerJS Listo. ID:", id);
+          console.log("✅ PeerJS Listo. ID:", id);
           setMyPeerId(id);
           setStatusMsg('3. Conectando a Sala...');
           joinRoomPresence(id);
         });
 
+        peer.on('disconnected', () => {
+             console.warn("PeerJS desconectado. Intentando reconectar...");
+             if(peer && !peer.destroyed) peer.reconnect();
+        });
+
         peer.on('error', (err) => {
-           console.warn("Error PeerJS:", err);
-           setStatusMsg(`Error P2P: ${err.type}`);
+           console.warn("⚠️ Error PeerJS:", err);
+           // Ignoramos errores menores de red
            if (err.type === 'peer-unavailable') {
                const deadPeer = err.message.split(' ').pop();
                removeRemoteStream(deadPeer);
@@ -68,10 +82,18 @@ export function useVideoLogic(roomId, session, onLeave) {
         });
 
         peer.on('call', (call) => {
-           console.log("Recibiendo llamada de:", call.peer);
+           console.log("📞 Recibiendo llamada de:", call.peer);
+           
+           // Si ya estamos hablando con él, no contestar de nuevo para evitar ecos
+           if (callsRef.current[call.peer]?.open) return;
+
            call.answer(streamRef.current);
            callsRef.current[call.peer] = call;
-           call.on('stream', (rs) => setRemoteStreams(prev => ({ ...prev, [call.peer]: rs })));
+           
+           call.on('stream', (rs) => {
+               setRemoteStreams(prev => ({ ...prev, [call.peer]: rs }));
+           });
+           // Limpieza segura
            call.on('close', () => removeRemoteStream(call.peer));
            call.on('error', () => removeRemoteStream(call.peer));
         });
@@ -91,7 +113,6 @@ export function useVideoLogic(roomId, session, onLeave) {
     if (channelRef.current) supabase.removeChannel(channelRef.current).catch(()=>{});
 
     const uniquePresenceKey = `${myUserId}-${peerId}`;
-    // Usamos un nombre de canal limpio para evitar problemas con caracteres especiales
     const cleanRoomId = roomId.replace(/[^a-zA-Z0-9]/g, '');
     const channel = supabase.channel(`room_${cleanRoomId}`, {
       config: { presence: { key: uniquePresenceKey } },
@@ -135,17 +156,37 @@ export function useVideoLogic(roomId, session, onLeave) {
       });
   };
 
-  // RECONECTOR
+  // ============================================
+  // EL RECONECTOR ESTABILIZADO (LA SOLUCIÓN)
+  // ============================================
   useEffect(() => {
     if (!myPeerId || !streamRef.current) return;
+    
     const interval = setInterval(() => {
       detectedUsers.forEach(user => {
-        if (remoteStreams[user.peerId]) return;
-        if (callsRef.current[user.peerId]?.open) return;
-        console.log("Intentando conectar con:", user.username);
-        callUser(user.peerId);
+        const targetId = user.peerId;
+
+        // 1. Si ya tengo su video, todo bien.
+        if (remoteStreams[targetId]) return;
+
+        // 2. Si ya tengo una llamada abierta, todo bien.
+        if (callsRef.current[targetId]?.open) return;
+
+        // 3. NUEVO: Si ya estoy intentando llamar ("Timbrando"), ESPERAR.
+        if (pendingCalls.current[targetId]) {
+            // Check de seguridad: Si lleva "timbrando" más de 10 segundos, soltamos para reintentar
+            if (Date.now() - pendingCalls.current[targetId] > 10000) {
+                pendingCalls.current[targetId] = null;
+            } else {
+                return; // Todavía está intentando conectar, paciencia.
+            }
+        }
+
+        console.log("🔄 Iniciando llamada estable a:", user.username);
+        callUser(targetId);
       });
-    }, 4000);
+    }, 3000); // Revisar cada 3 segundos
+
     return () => clearInterval(interval);
   }, [detectedUsers, myPeerId, remoteStreams]);
 
@@ -162,22 +203,40 @@ export function useVideoLogic(roomId, session, onLeave) {
   };
 
   const removeRemoteStream = (peerId) => {
+      // Limpiamos todo rastro de ese usuario
       setRemoteStreams(prev => { const n = { ...prev }; delete n[peerId]; return n; });
       if (callsRef.current[peerId]) { callsRef.current[peerId].close(); delete callsRef.current[peerId]; }
+      if (pendingCalls.current[peerId]) delete pendingCalls.current[peerId];
   };
 
   const callUser = (remotePeerId) => {
     try {
+        // Marcamos como "Llamando" para no spammear
+        pendingCalls.current[remotePeerId] = Date.now();
+
         const call = peerRef.current.call(remotePeerId, streamRef.current);
-        if (!call) return;
+        if (!call) {
+            delete pendingCalls.current[remotePeerId];
+            return;
+        }
+
         callsRef.current[remotePeerId] = call;
-        call.on('stream', (rs) => setRemoteStreams(prev => ({ ...prev, [remotePeerId]: rs })));
+        
+        call.on('stream', (rs) => {
+            // ¡ÉXITO! Ya tenemos video, borramos el estado de "pendiente"
+            delete pendingCalls.current[remotePeerId];
+            setRemoteStreams(prev => ({ ...prev, [remotePeerId]: rs }));
+        });
+
         call.on('close', () => removeRemoteStream(remotePeerId));
         call.on('error', () => removeRemoteStream(remotePeerId));
-    } catch (e) { console.error("Error al llamar:", e); }
+    } catch (e) { 
+        console.error("Error al llamar:", e); 
+        delete pendingCalls.current[remotePeerId];
+    }
   };
 
-  // CONTROLES DE USUARIO
+  // ... (El resto de funciones de controles sigue igual)
   const handleManualDisconnect = async () => { await safeCleanup(); if (onLeave) onLeave(); };
   
   const toggleMic = () => {
