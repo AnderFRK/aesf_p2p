@@ -11,7 +11,7 @@ export function useVideoLogic(roomId, session, onLeave) {
   // UI States
   const [statusMsg, setStatusMsg] = useState('Iniciando...');
   const [supabaseStatus, setSupabaseStatus] = useState('OFF');
-  const [isHost, setIsHost] = useState(false); // NUEVO: ¿Soy el Host?
+  const [isHost, setIsHost] = useState(false); // ¿Soy el Host?
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(true);
 
@@ -21,7 +21,7 @@ export function useVideoLogic(roomId, session, onLeave) {
   const streamRef = useRef(null);
   const callsRef = useRef({});
   
-  // Guardamos mi hora de llegada exacta
+  // Guardamos mi hora de llegada exacta para definir jerarquía
   const myJoinTime = useRef(Date.now()); 
 
   const myUsername = session.user.user_metadata?.username || 'Usuario';
@@ -64,8 +64,7 @@ export function useVideoLogic(roomId, session, onLeave) {
         // SOLO CONTESTAMOS LLAMADAS (Los "Viejos" esperan aquí)
         peer.on('call', (call) => {
            console.log("📞 Recibiendo llamada de:", call.peer);
-           // Si ya existe, ignorar
-           if (callsRef.current[call.peer]) return;
+           if (callsRef.current[call.peer]) return; // Evitar duplicados
 
            call.answer(streamRef.current);
            setupCallEvents(call, call.peer);
@@ -73,7 +72,7 @@ export function useVideoLogic(roomId, session, onLeave) {
 
       } catch (err) {
         console.error("Error:", err);
-        setStatusMsg('Error Acceso');
+        setStatusMsg('Error Acceso Mic/Cam');
       }
     };
 
@@ -81,14 +80,30 @@ export function useVideoLogic(roomId, session, onLeave) {
     return () => { isMounted = false; safeCleanup(); };
   }, [roomId]);
 
+  // CONFIGURACIÓN DE EVENTOS DE LLAMADA (MEJORADA PARA DETECTAR CAMBIOS DE VIDEO)
   const setupCallEvents = (call, peerId) => {
       callsRef.current[peerId] = call;
-      call.on('stream', (rs) => setRemoteStreams(prev => ({ ...prev, [peerId]: rs })));
+
+      call.on('stream', (rs) => {
+          console.log("📺 Stream inicial recibido de:", peerId);
+          setRemoteStreams(prev => ({ ...prev, [peerId]: rs }));
+      });
+
+      // IMPORTANTE: Escuchar cuando agregan video en vivo (Renegociación)
+      if (call.peerConnection) {
+          call.peerConnection.ontrack = (event) => {
+              console.log("🔄 Nuevo Track detectado:", event.track.kind);
+              if (event.streams && event.streams[0]) {
+                  setRemoteStreams(prev => ({ ...prev, [peerId]: event.streams[0] }));
+              }
+          };
+      }
+
       call.on('close', () => removeRemoteStream(peerId));
       call.on('error', () => removeRemoteStream(peerId));
   };
 
-  // PRESENCE (Aquí definimos quién es quién)
+  // 2. PRESENCE (Aquí definimos quién es el Host)
   const joinRoomPresence = (peerId) => {
     if (channelRef.current) supabase.removeChannel(channelRef.current).catch(()=>{});
 
@@ -110,6 +125,7 @@ export function useVideoLogic(roomId, session, onLeave) {
            if (u && u.peerId) users.push(u);
         }
 
+        // Ordenamos por antigüedad: El más viejo es el primero (Host)
         users.sort((a, b) => new Date(a.online_at) - new Date(b.online_at));
 
         const amIHost = users.length > 0 && users[0].peerId === peerId;
@@ -135,10 +151,11 @@ export function useVideoLogic(roomId, session, onLeave) {
                  username: myUsername,
                  avatar_url: myAvatar,
                  peerId: peerId,
-                 online_at: myOnlineAt // <--- CLAVE PARA EL ORDEN
+                 online_at: myOnlineAt // Clave para el orden
               });
            };
            await sendTrack();
+           
            // Heartbeat cada 5s
            const interval = setInterval(() => { if(channelRef.current) sendTrack(); }, 5000);
            return () => clearInterval(interval);
@@ -146,9 +163,7 @@ export function useVideoLogic(roomId, session, onLeave) {
       });
   };
 
-  // ============================================
-  // CONEXIÓN JERÁRQUICA (SOLUCIÓN DEFINITIVA)
-  // ============================================
+  // 3. CONEXIÓN JERÁRQUICA (SOLUCIÓN DEFINITIVA)
   useEffect(() => {
     if (!myPeerId || !streamRef.current) return;
     
@@ -162,11 +177,12 @@ export function useVideoLogic(roomId, session, onLeave) {
         const myTime = myJoinTime.current;
         const targetTime = new Date(user.online_at).getTime();
         
+        // REGLA: El "Nuevo" (tiempo mayor) llama al "Viejo" (tiempo menor).
         if (myTime > targetTime) {
             console.log(`📞 Soy el nuevo. Llamando al veterano: ${user.username}`);
             callUser(targetId);
         } else {
-            // console.log(`⏳ Soy veterano. Esperando que el nuevo (${user.username}) me llame.`);
+            // Soy veterano, espero pacientemente.
         }
       });
     }, 3000);
@@ -199,8 +215,6 @@ export function useVideoLogic(roomId, session, onLeave) {
 
   const handleManualDisconnect = async () => { await safeCleanup(); if (onLeave) onLeave(); };
   
-  // (Mantén toggleMic, toggleCamera, updateStream, handleRefresh igual que antes)
-  // ... Copia tus funciones de toggleMic y toggleCamera aquí abajo ...
   const toggleMic = () => {
     if (streamRef.current) {
       const t = streamRef.current.getAudioTracks()[0];
@@ -210,27 +224,43 @@ export function useVideoLogic(roomId, session, onLeave) {
 
   const toggleCamera = async () => {
     if (cameraOn) {
+      // APAGAR CÁMARA
       streamRef.current.getVideoTracks().forEach(t => { t.stop(); t.enabled = false; });
       try {
         const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         updateStream(audioStream);
         setCameraOn(false);
+        handleRefresh(); // Avisar cambio
       } catch(e) {}
     } else {
+      // PRENDER CÁMARA
       try {
         const newStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        setCameraOn(true); setMicOn(true); updateStream(newStream);
-      } catch (err) { alert("Error cámara"); }
+        setCameraOn(true); 
+        setMicOn(true); 
+        updateStream(newStream);
+        handleRefresh(); // Avisar cambio crítico
+      } catch (err) { alert("Error: Cámara ocupada o denegada"); }
     }
   };
 
   const updateStream = (newStream) => {
-      setLocalStream(newStream); streamRef.current = newStream;
+      setLocalStream(newStream); 
+      streamRef.current = newStream;
+      
       Object.values(callsRef.current).forEach(call => {
-          const vSender = call.peerConnection.getSenders().find(s => s.track?.kind === 'video');
-          const aSender = call.peerConnection.getSenders().find(s => s.track?.kind === 'audio');
-          if (vSender && newStream.getVideoTracks()[0]) vSender.replaceTrack(newStream.getVideoTracks()[0]);
-          if (aSender && newStream.getAudioTracks()[0]) aSender.replaceTrack(newStream.getAudioTracks()[0]);
+          if(!call.peerConnection) return;
+          
+          const senders = call.peerConnection.getSenders();
+          const vSender = senders.find(s => s.track?.kind === 'video');
+          const aSender = senders.find(s => s.track?.kind === 'audio');
+          
+          if (vSender && newStream.getVideoTracks()[0]) {
+              vSender.replaceTrack(newStream.getVideoTracks()[0]);
+          }
+          if (aSender && newStream.getAudioTracks()[0]) {
+              aSender.replaceTrack(newStream.getAudioTracks()[0]);
+          }
       });
   };
 
