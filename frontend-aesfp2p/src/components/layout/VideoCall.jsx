@@ -9,24 +9,21 @@ export default function VideoCall({ roomId, session, onLeave }) {
   const [localStream, setLocalStream] = useState(null);
   const [detectedUsers, setDetectedUsers] = useState([]);
   
-  // Estado visual
   const [statusMsg, setStatusMsg] = useState('Conectando...');
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(true);
 
-  // Referencias para persistencia sin re-render
   const peerRef = useRef(null);
   const channelRef = useRef(null);
   const streamRef = useRef(null);
   const callsRef = useRef({});
 
-  // Datos del usuario
   const myUsername = session.user.user_metadata?.username || 'Usuario';
   const myAvatar = session.user.user_metadata?.avatar_url;
   const myUserId = session.user.id;
 
   // ==========================================
-  // 1. INICIALIZACIÓN Y CICLO DE VIDA
+  // INICIALIZACIÓN Y CICLO DE VIDA
   // ==========================================
   useEffect(() => {
     if (!roomId || !session) return;
@@ -34,14 +31,12 @@ export default function VideoCall({ roomId, session, onLeave }) {
 
     const init = async () => {
       try {
-        // Pedimos SOLO AUDIO al inicio para carga rápida
         const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
         
         if (!isMounted) return;
         setLocalStream(stream);
         streamRef.current = stream;
 
-        // Configuración STUN para Vercel/Producción
         const peer = new Peer(undefined, {
           config: {
             iceServers: [
@@ -57,15 +52,14 @@ export default function VideoCall({ roomId, session, onLeave }) {
 
         peer.on('open', (id) => {
           if (!isMounted) return;
-          console.log("✅ Mi ID P2P:", id);
+          console.log(" Mi ID P2P:", id);
           setMyPeerId(id);
           setStatusMsg('Entrando a sala...');
           joinRoomPresence(id);
         });
 
         peer.on('error', (err) => {
-            console.warn("⚠️ PeerJS Warning:", err);
-            // Si perdemos conexión con un par específico, limpiamos
+            console.warn("PeerJS Warning:", err);
             if (err.type === 'peer-unavailable') {
                 const deadPeer = err.message.split(' ').pop();
                 removeRemoteStream(deadPeer);
@@ -73,7 +67,7 @@ export default function VideoCall({ roomId, session, onLeave }) {
         });
 
         peer.on('call', (call) => {
-          console.log("📞 Llamada entrante de:", call.peer);
+          console.log("Llamada entrante de:", call.peer);
           call.answer(streamRef.current);
           callsRef.current[call.peer] = call;
           
@@ -81,13 +75,12 @@ export default function VideoCall({ roomId, session, onLeave }) {
             setRemoteStreams(prev => ({ ...prev, [call.peer]: remoteStream }));
           });
 
-          // Limpieza si el otro cuelga
           call.on('close', () => removeRemoteStream(call.peer));
           call.on('error', () => removeRemoteStream(call.peer));
         });
 
       } catch (err) {
-        console.error("❌ Error Media:", err);
+        console.error("Error Media:", err);
         setStatusMsg('Error: Micro requerido');
       }
     };
@@ -107,16 +100,19 @@ export default function VideoCall({ roomId, session, onLeave }) {
   const safeCleanup = async () => {
     // 1. Desconectar Supabase
     const channelToClean = channelRef.current;
-    channelRef.current = null; // Evitar doble ejecución
+    channelRef.current = null; 
 
     if (channelToClean) {
         try {
             await channelToClean.untrack();
-        } catch (e) { /* Ignorar si ya estaba cerrado */ }
-        
+        } catch (e) {
+            console.warn("Error al desuscribirse del canal:", e);
+        }
         try {
             await supabase.removeChannel(channelToClean);
-        } catch (e) { /* Ignorar */ }
+        } catch (e) {
+            console.warn("Error al eliminar el canal:", e);
+        }
     }
 
     // 2. Destruir PeerJS
@@ -145,17 +141,14 @@ export default function VideoCall({ roomId, session, onLeave }) {
   };
 
   // ==========================================
-  // 3. SEÑALIZACIÓN (SUPABASE PRESENCE)
+  // SEÑALIZACIÓN (SUPABASE PRESENCE)
   // ==========================================
   const joinRoomPresence = (peerId) => {
-    // Limpieza preventiva
     if (channelRef.current) {
         const old = channelRef.current;
         channelRef.current = null;
         supabase.removeChannel(old).catch(() => {});
     }
-
-    // Clave única para evitar conflictos de sesiones fantasmas
     const uniquePresenceKey = `${myUserId}-${peerId}`;
     
     const channel = supabase.channel(`video_presence:${roomId}`, {
@@ -206,27 +199,25 @@ export default function VideoCall({ roomId, session, onLeave }) {
   };
 
   // ==========================================
-  // 4. RECONECTOR AUTOMÁTICO (Heartbeat)
+  // RECONECTOR AUTOMÁTICO (Heartbeat)
   // ==========================================
   useEffect(() => {
     if (!myPeerId || !streamRef.current) return;
     
     const interval = setInterval(() => {
       detectedUsers.forEach(user => {
-        // Lógica para no llamar si ya existe conexión
-        if (remoteStreams[user.peerId]) return; // Ya tengo su video
-        if (callsRef.current[user.peerId]?.open) return; // Ya estoy llamando
+        if (remoteStreams[user.peerId]) return;
+        if (callsRef.current[user.peerId]?.open) return;
 
         console.log("🔄 Intentando conectar con:", user.username);
         callUser(user.peerId);
       });
-    }, 4000); // Revisa cada 4 segundos
+    }, 4000);
 
     return () => clearInterval(interval);
   }, [detectedUsers, myPeerId, remoteStreams]);
 
   const callUser = (remotePeerId) => {
-    // Verificaciones de seguridad antes de llamar
     if (!peerRef.current || !streamRef.current || peerRef.current.disconnected) return;
     
     try {
@@ -244,7 +235,7 @@ export default function VideoCall({ roomId, session, onLeave }) {
   };
 
   // ==========================================
-  // 5. CONTROLES DE HARDWARE
+  // CONTROLES DE HARDWARE
   // ==========================================
   const handleManualDisconnect = async () => {
       await safeCleanup();
@@ -263,13 +254,11 @@ export default function VideoCall({ roomId, session, onLeave }) {
 
   const toggleCamera = async () => {
     if (cameraOn) {
-      // APAGAR CÁMARA
       streamRef.current.getVideoTracks().forEach(t => {
-          t.stop();         // Detener hardware
-          t.enabled = false; // Señal lógica
+          t.stop();
+          t.enabled = false;
       });
       
-      // Volver a stream solo audio para limpiar el canal
       try {
         const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         updateStream(audioStream);
@@ -287,7 +276,6 @@ export default function VideoCall({ roomId, session, onLeave }) {
     }
   };
   
-  // Actualiza el stream local y lo reemplaza en las llamadas activas
   const updateStream = (newStream) => {
       setLocalStream(newStream);
       streamRef.current = newStream;
@@ -308,11 +296,10 @@ export default function VideoCall({ roomId, session, onLeave }) {
   };
 
   // ==========================================
-  // 6. RENDERIZADO
+  //  RENDERIZADO
   // ==========================================
   return (
     <div className="bg-gray-800 p-4 border-b border-gray-600 flex flex-col gap-4">
-      {/* HEADER */}
       <div className="flex justify-between items-center">
         <div className="flex flex-col">
             <h3 className="text-emerald-400 font-bold flex items-center gap-2 text-sm">
@@ -334,9 +321,7 @@ export default function VideoCall({ roomId, session, onLeave }) {
         </div>
       </div>
       
-      {/* GRID DE VIDEOS */}
       <div className="flex flex-wrap gap-4 justify-center md:justify-start">
-        {/* MI VIDEO LOCAL */}
         <div className="relative w-40 h-28 bg-black rounded-lg overflow-hidden border border-emerald-500/50 flex items-center justify-center">
           <video 
              ref={v => {if(v) v.srcObject = localStream}} 
@@ -362,7 +347,6 @@ export default function VideoCall({ roomId, session, onLeave }) {
   );
 }
 
-// COMPONENTE AUXILIAR PARA VIDEO REMOTO
 function RemoteVideo({ stream, username, avatar }) {
     const videoRef = useRef(null);
     const [hasVideo, setHasVideo] = useState(false);
@@ -370,10 +354,8 @@ function RemoteVideo({ stream, username, avatar }) {
     useEffect(() => {
         if (videoRef.current) videoRef.current.srcObject = stream;
         
-        // Intervalo para detectar si el video está realmente activo o congelado/muteado
         const interval = setInterval(() => {
             const track = stream.getVideoTracks()[0];
-            // !track.muted es la clave para detectar si apagaron la cámara
             setHasVideo(track && track.enabled && track.readyState === 'live' && !track.muted);
         }, 500);
         return () => clearInterval(interval);
