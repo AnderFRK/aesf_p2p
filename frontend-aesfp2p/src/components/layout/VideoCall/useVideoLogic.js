@@ -61,12 +61,10 @@ export function useVideoLogic(roomId, session, onLeave) {
             const fakeVideoTrack = fakeStream.getVideoTracks()[0];
             fakeVideoTrack.enabled = false; // Lo apagamos para no gastar recursos
             
-            // Combinar Audio Real + Video Falso
             audioStream.addTrack(fakeVideoTrack);
             stream = audioStream;
         }
 
-        // Apagamos el video inicialmente (sea real o falso) para entrar en modo "Solo Audio"
         stream.getVideoTracks().forEach(track => {
             track.enabled = false; 
         });
@@ -118,7 +116,6 @@ export function useVideoLogic(roomId, session, onLeave) {
       call.on('error', () => removeRemoteStream(peerId));
   };
 
-  // 2. PRESENCE (IGUAL)
   const joinRoomPresence = (peerId) => {
     if (channelRef.current) supabase.removeChannel(channelRef.current).catch(()=>{});
 
