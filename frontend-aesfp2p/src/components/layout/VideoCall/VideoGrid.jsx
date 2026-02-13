@@ -2,24 +2,41 @@ import { useEffect, useRef, useState } from 'react';
 
 export default function VideoGrid({ localStream, remoteStreams, detectedUsers, cameraOn, micOn, myAvatar }) {
   return (
-    <div className="flex flex-wrap gap-4 justify-center md:justify-start">
-      <div className="relative w-40 h-28 bg-black rounded-lg overflow-hidden border border-emerald-500/50 flex items-center justify-center">
-         <video 
-            ref={v => {if(v) v.srcObject = localStream}} 
-            autoPlay muted playsInline 
+    <div className="flex flex-wrap gap-4 justify-center md:justify-start p-2">
+      <div className="relative w-40 h-28 bg-gray-900 rounded-lg overflow-hidden border border-emerald-500/50 flex items-center justify-center shadow-lg">
+          <video 
+            ref={v => { if (v && localStream) v.srcObject = localStream; }} 
+            autoPlay 
+            muted 
+            playsInline 
             className={`w-full h-full object-cover transform scale-x-[-1] ${!cameraOn ? 'hidden' : ''}`} 
-         />
-         {!cameraOn && (
-             <div className="flex flex-col items-center">
-                 <img src={myAvatar} className="w-10 h-10 rounded-full opacity-50 mb-1" alt="Tú"/>
-                 <span className="text-[10px] text-gray-500">Tú</span>
-             </div>
-         )}
-         <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full border border-black ${micOn ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+          />
+          {!cameraOn && (
+              <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
+                  <img 
+                    src={myAvatar || `https://ui-avatars.com/api/?name=Yo&background=10b981&color=fff`} 
+                    className="w-12 h-12 rounded-full border-2 border-emerald-500/20 mb-1 object-cover" 
+                    alt="Tú"
+                  />
+                  <span className="text-[10px] text-emerald-500 font-bold tracking-wider uppercase">Tú</span>
+              </div>
+          )}
+          {/* Indicador de Micrófono Local */}
+          <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full border border-black shadow-sm ${micOn ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
       </div>
+
+      {/* VIDEOS REMOTOS */}
       {Object.entries(remoteStreams).map(([peerId, stream]) => {
-         const userInfo = detectedUsers.find(u => u.peerId === peerId) || { username: 'Conectando...' };
-         return <RemoteVideo key={peerId} stream={stream} username={userInfo.username} avatar={userInfo.avatar_url} />
+          // Buscamos la info del usuario. Importante: usamos peerId para vincular.
+          const userInfo = detectedUsers.find(u => u.peerId === peerId) || { username: 'Conectando...' };
+          return (
+            <RemoteVideo 
+                key={peerId} 
+                stream={stream} 
+                username={userInfo.username} 
+                avatar={userInfo.avatar_url} 
+            />
+          );
       })}
     </div>
   );
@@ -28,25 +45,56 @@ export default function VideoGrid({ localStream, remoteStreams, detectedUsers, c
 function RemoteVideo({ stream, username, avatar }) {
     const videoRef = useRef(null);
     const [hasVideo, setHasVideo] = useState(false);
+
     useEffect(() => {
-        if (videoRef.current) videoRef.current.srcObject = stream;
-        const interval = setInterval(() => {
-            const track = stream.getVideoTracks()[0];
-            setHasVideo(track && track.enabled && track.readyState === 'live' && !track.muted);
-        }, 500);
-        return () => clearInterval(interval);
-    }, [stream]);
+        let isMounted = true;
+        
+        if (videoRef.current && stream) {
+            videoRef.current.srcObject = stream;
+        }
+
+        // Monitor de tracks para detectar cambios de cámara en tiempo real
+        const checkTracks = () => {
+            if (!isMounted || !stream) return;
+            const videoTrack = stream.getVideoTracks()[0];
+            // Un track es válido si existe, está habilitado y no es el "fake track" negro
+            const active = videoTrack && videoTrack.enabled && videoTrack.readyState === 'live';
+            if (hasVideo !== active) setHasVideo(active);
+        };
+
+        const interval = setInterval(checkTracks, 1000);
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
+    }, [stream, hasVideo]);
 
     return (
-        <div className="relative w-40 h-28 bg-black rounded-lg overflow-hidden border border-gray-600 flex items-center justify-center shadow-sm animate-in fade-in duration-300">
-            <video ref={videoRef} autoPlay playsInline className={`w-full h-full object-cover ${!hasVideo ? 'hidden' : ''}`} />
+        <div className="relative w-40 h-28 bg-gray-900 rounded-lg overflow-hidden border border-gray-700 flex items-center justify-center shadow-md animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline 
+                className={`w-full h-full object-cover ${!hasVideo ? 'hidden' : ''}`} 
+            />
+            
             {!hasVideo && (
-                <div className="flex flex-col items-center">
-                    <img src={avatar || `https://ui-avatars.com/api/?name=${username}`} className="w-10 h-10 rounded-full opacity-60 mb-1" alt="User"/>
-                    <span className="text-gray-500 text-[10px]">Solo Audio</span>
+                <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
+                    <img 
+                        src={avatar || `https://ui-avatars.com/api/?name=${username}&background=random`} 
+                        className="w-12 h-12 rounded-full border-2 border-gray-700 mb-1 object-cover" 
+                        alt={username}
+                    />
+                    <span className="text-gray-400 text-[10px] font-medium uppercase tracking-tighter">Solo Audio</span>
                 </div>
             )}
-            <span className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white px-1.5 rounded max-w-[90%] truncate">{username}</span>
+            
+            {/* Etiqueta de nombre */}
+            <div className="absolute bottom-1 left-1 right-1">
+                <span className="block text-[9px] bg-black/70 backdrop-blur-sm text-white px-2 py-0.5 rounded shadow-sm truncate max-w-fit">
+                    {username}
+                </span>
+            </div>
         </div>
     );
 }
