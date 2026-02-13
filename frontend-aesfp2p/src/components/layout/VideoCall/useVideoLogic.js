@@ -14,7 +14,10 @@ export function useVideoLogic(roomId, session, onLeave) {
   const [isHost, setIsHost] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(true);
-  const [hasWebcam, setHasWebcam] = useState(true); // NUEVO: Para saber si bloquear el botón
+  
+  // ESTADOS DE HARDWARE (Para saber qué botones bloquear)
+  const [hasWebcam, setHasWebcam] = useState(true);
+  const [hasMic, setHasMic] = useState(true); // <--- NUEVO
 
   // Refs
   const peerRef = useRef(null);
@@ -27,7 +30,36 @@ export function useVideoLogic(roomId, session, onLeave) {
   const myAvatar = session.user.user_metadata?.avatar_url;
   const myUserId = session.user.id;
 
-  // 1. INICIALIZACIÓN
+  // --- FUNCIONES AUXILIARES DE HARDWARE FALSO ---
+
+  // Genera un video negro a 1 FPS (Ahorro máximo de recursos)
+  const createFakeVideoTrack = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 480;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // OPTIMIZACIÓN: 1 FPS es suficiente para una imagen estática
+    const stream = canvas.captureStream(1); 
+    const track = stream.getVideoTracks()[0];
+    track.enabled = false; // Empezamos con "cámara apagada"
+    return track;
+  };
+
+  // Genera un audio silencioso (Para usuarios sin micro)
+  const createFakeAudioTrack = () => {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = ctx.createOscillator();
+    const dst = ctx.createMediaStreamDestination();
+    oscillator.connect(dst);
+    oscillator.start();
+    const track = dst.stream.getAudioTracks()[0];
+    track.enabled = false;
+    return track;
+  };
+
+  // INICIALIZACIÓN ROBUSTA
   useEffect(() => {
     if (!roomId || !session) return;
     let isMounted = true;
@@ -36,38 +68,34 @@ export function useVideoLogic(roomId, session, onLeave) {
       try {
         setStatusMsg('1. Hardware...');
         
-        let stream;
+        let stream = new MediaStream(); // Empezamos con un stream vacío
+        
+        // --- INTENTO DE VIDEO ---
         try {
-            // INTENTO 1: Pedir Cámara y Micro reales
-            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            const videoTrack = videoStream.getVideoTracks()[0];
+            videoTrack.enabled = false; // Apagado por defecto
+            stream.addTrack(videoTrack);
             setHasWebcam(true);
-        } catch (err) {
-            console.warn("⚠️ No se detectó cámara real, usando modo fantasma.");
-            setHasWebcam(false); // Desactivamos botón de cámara en UI
-            
-            // INTENTO 2: Pedir SOLO Audio y agregar Video Falso
-            const audioStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-            
-            // CREAR CÁMARA FANTASMA (CANVAS NEGRO)
-            const canvas = document.createElement('canvas');
-            canvas.width = 640;
-            canvas.height = 480;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // Generar stream de 30fps del cuadro negro
-            const fakeStream = canvas.captureStream(30);
-            const fakeVideoTrack = fakeStream.getVideoTracks()[0];
-            fakeVideoTrack.enabled = false; // Lo apagamos para no gastar recursos
-            
-            audioStream.addTrack(fakeVideoTrack);
-            stream = audioStream;
+        } catch (e) {
+            console.warn("📷 Sin cámara: Usando video fantasma (1 FPS).");
+            setHasWebcam(false);
+            stream.addTrack(createFakeVideoTrack());
         }
 
-        stream.getVideoTracks().forEach(track => {
-            track.enabled = false; 
-        });
+        // --- INTENTO DE AUDIO ---
+        try {
+            const audioStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+            const audioTrack = audioStream.getAudioTracks()[0];
+            stream.addTrack(audioTrack);
+            setHasMic(true);
+            setMicOn(true);
+        } catch (e) {
+            console.warn("🎤 Sin micrófono: Usando audio silencioso (Modo Espectador).");
+            setHasMic(false);
+            setMicOn(false);
+            stream.addTrack(createFakeAudioTrack());
+        }
 
         if (!isMounted) return;
         setLocalStream(stream);
@@ -101,7 +129,7 @@ export function useVideoLogic(roomId, session, onLeave) {
 
       } catch (err) {
         console.error("Error Fatal:", err);
-        setStatusMsg('Error: Se requiere al menos micrófono');
+        setStatusMsg('Error Crítico');
       }
     };
 
@@ -168,7 +196,7 @@ export function useVideoLogic(roomId, session, onLeave) {
       });
   };
 
-  // 3. CONEXIÓN JERÁRQUICA (IGUAL)
+  // CONEXIÓN JERÁRQUICA
   useEffect(() => {
     if (!myPeerId || !streamRef.current) return;
     const interval = setInterval(() => {
@@ -215,6 +243,11 @@ export function useVideoLogic(roomId, session, onLeave) {
   const handleManualDisconnect = async () => { await safeCleanup(); if (onLeave) onLeave(); };
   
   const toggleMic = () => {
+    // Si no tiene micro real, no hacemos nada o mostramos alerta
+    if (!hasMic) {
+        alert("No se detectó micrófono. Estás en modo espectador.");
+        return;
+    }
     if (streamRef.current) {
       const t = streamRef.current.getAudioTracks()[0];
       if (t) { 
@@ -242,8 +275,10 @@ export function useVideoLogic(roomId, session, onLeave) {
 
   return {
     localStream, remoteStreams, detectedUsers,
-    statusMsg, supabaseStatus, cameraOn, micOn,
-    isHost, hasWebcam, // <--- Exportamos esto para bloquear el botón en UI si quieres
+    statusMsg, supabaseStatus, 
+    cameraOn, micOn, 
+    hasWebcam, hasMic,
+    isHost, 
     myAvatar,
     toggleMic, toggleCamera, handleManualDisconnect, handleRefresh
   };

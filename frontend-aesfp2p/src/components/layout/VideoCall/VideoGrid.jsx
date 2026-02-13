@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 export default function VideoGrid({ localStream, remoteStreams, detectedUsers, cameraOn, micOn, myAvatar }) {
   return (
     <div className="flex flex-wrap gap-4 justify-center md:justify-start">
-      {/* VIDEO LOCAL */}
       <div className="relative w-40 h-28 bg-black rounded-lg overflow-hidden border border-emerald-500/50 flex items-center justify-center">
          <video 
             ref={v => {if(v) v.srcObject = localStream}} 
@@ -18,8 +17,6 @@ export default function VideoGrid({ localStream, remoteStreams, detectedUsers, c
          )}
          <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full border border-black ${micOn ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
       </div>
-
-      {/* VIDEOS REMOTOS */}
       {Object.entries(remoteStreams).map(([peerId, stream]) => {
          const userInfo = detectedUsers.find(u => u.peerId === peerId) || { username: 'Conectando...' };
          return <RemoteVideo key={peerId} stream={stream} username={userInfo.username} avatar={userInfo.avatar_url} />
