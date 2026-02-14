@@ -9,44 +9,72 @@ export function useChannelPresence(roomId) {
     if (!roomId) return;
 
     const topic = `room_${roomId}`;
-    let channel = supabase.channel(topic); // Siempre obtenemos la referencia, exista o no.
+    
+    const channels = supabase.getChannels();
+    let channel = channels.find(c => c.topic === topic || c.topic === `realtime:${topic}`);
+
+    if (!channel) {
+        channel = supabase.channel(topic);
+    }
     channelRef.current = channel;
 
-    const updateState = () => {
+    // FUNCIÓN PARA LEER TODO EL ESTADO (Sin filtros)
+    const updateUsers = () => {
         const state = channel.presenceState();
-        const usersList = [];
+        const rawUsers = [];
         
         Object.keys(state).forEach(key => {
-            state[key].forEach(user => {
-                if (user && (user.userId || user.peerId)) {
-                    usersList.push(user);
+            state[key].forEach(u => {
+                if (u && (u.peerId || u.userId)) {
+                    rawUsers.push(u);
                 }
             });
         });
 
-        // Ordenar por antigüedad
-        usersList.sort((a, b) => new Date(a.online_at || 0) - new Date(b.online_at || 0));
+        // Ordenamos por fecha (Host primero)
+        rawUsers.sort((a, b) => {
+            const timeA = new Date(a.online_at || 0).getTime();
+            const timeB = new Date(b.online_at || 0).getTime();
+            return timeA - timeB;
+        });
         
-        const uniqueUsers = Array.from(new Map(usersList.map(u => [u.userId || u.peerId, u])).values());
-        setUsers(uniqueUsers);
+        // Eliminamos duplicados visuales por PeerID
+        const unique = Array.from(new Map(rawUsers.map(u => [u.peerId, u])).values());
+        
+        // Actualizamos estado
+        setUsers(unique);
     };
 
-    // Listeners universales
-    channel.on('presence', { event: 'sync' }, updateState);
-    channel.on('presence', { event: 'join' }, updateState);
-    channel.on('presence', { event: 'leave' }, updateState);
-
-    // INTENTO DE SUSCRIPCIÓN "SEGURA"
-    // Si el canal ya estaba suscrito por el Host, esto no hace nada malo.
-    // Si no estaba suscrito, nos suscribe.
-    channel.subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-            updateState();
-        }
+    // LISTENERS
+    // 'sync': Se dispara cuando te conectas y recibes el estado inicial (o tu propio track)
+    channel.on('presence', { event: 'sync' }, updateUsers);
+    
+    // 'join': Se dispara cuando entra OTRO
+    channel.on('presence', { event: 'join' }, updateUsers);
+    
+    // 'leave': Se dispara cuando alguien sale
+    channel.on('presence', { event: 'leave' }, ({ leftPresences }) => {
+        // Opción A: Esperar al sync (a veces lento)
+        // Opción B: Filtrar manual (Rápido y visualmente mejor)
+        setUsers(currentList => {
+            const leftIds = leftPresences.map(u => u.peerId);
+            return currentList.filter(u => !leftIds.includes(u.peerId));
+        });
     });
 
+    // SUSCRIPCIÓN (Solo si es nuevo)
+    if (channel.state !== 'joined' && channel.state !== 'joining') {
+        channel.subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                updateUsers();
+            }
+        });
+    } else {
+        updateUsers();
+    }
+
     return () => {
-      channelRef.current = null;
+        channelRef.current = null;
     };
   }, [roomId]);
 

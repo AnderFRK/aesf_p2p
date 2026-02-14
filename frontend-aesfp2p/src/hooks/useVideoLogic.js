@@ -3,12 +3,12 @@ import Peer from 'peerjs';
 import { supabase } from '../lib/supabase'; 
 
 export function useVideoLogic(roomId, session, onLeave) {
-  // 1. Datos
+  // Datos
   const myUserId = session?.user?.id || `guest-${Math.floor(Math.random() * 10000)}`;
   const myUsername = session?.user?.user_metadata?.username || 'Usuario';
   const myAvatar = session?.user?.user_metadata?.avatar_url;
 
-  // 2. Estados
+  // Estados
   const [statusMsg, setStatusMsg] = useState('Iniciando...');
   const [isHost, setIsHost] = useState(false);
   const [detectedUsers, setDetectedUsers] = useState([]);
@@ -21,15 +21,13 @@ export function useVideoLogic(roomId, session, onLeave) {
   const [hasWebcam, setHasWebcam] = useState(true);
   const [hasMic, setHasMic] = useState(true);
 
-  // 3. Referencias (No causan re-renders)
+  // Referencias (No causan re-renders)
   const peerRef = useRef(null);
   const channelRef = useRef(null);
   const streamRef = useRef(null);
   const callsRef = useRef({});
   const myJoinTime = useRef(new Date().toISOString()); 
   const mountedRef = useRef(true);
-  
-  // 🛑 SEMÁFORO: Evita doble conexión en React Strict Mode
   const isConnectingRef = useRef(false);
 
   // --- EFECTO PRINCIPAL ---
@@ -38,18 +36,16 @@ export function useVideoLogic(roomId, session, onLeave) {
     mountedRef.current = true;
 
     const init = async () => {
-      // Si ya estamos conectando, no hacemos nada.
       if (isConnectingRef.current) return;
       isConnectingRef.current = true;
 
       try {
-        setStatusMsg('1. Hardware...');
+        setStatusMsg('Hardware...');
         
         // --- MEDIA SETUP ---
         let stream = new MediaStream();
         try {
             const vStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            // Verificar si seguimos montados tras el await
             if (!mountedRef.current) { vStream.getTracks().forEach(t => t.stop()); return; }
             const vTrack = vStream.getVideoTracks()[0];
             vTrack.enabled = false; 
@@ -78,8 +74,7 @@ export function useVideoLogic(roomId, session, onLeave) {
         streamRef.current = stream;
 
         // --- PEERJS SETUP ---
-        setStatusMsg('2. PeerJS...');
-        // Destruir instancia anterior si existe (limpieza local)
+        setStatusMsg('PeerJS...');
         if (peerRef.current) peerRef.current.destroy();
 
         const peer = new Peer(undefined, {
@@ -94,9 +89,8 @@ export function useVideoLogic(roomId, session, onLeave) {
 
         peer.on('open', (id) => {
           if (!mountedRef.current) return;
-          console.log("✅ PeerID:", id);
-          setStatusMsg('3. Conectando Sala...');
-          // Conectamos a Supabase SOLO cuando tenemos PeerID
+          console.log("PeerID:", id);
+          setStatusMsg('Conectando Sala...');
           joinSupabaseRoom(id);
         });
 
@@ -111,7 +105,6 @@ export function useVideoLogic(roomId, session, onLeave) {
         console.error("Error Init:", err);
         setStatusMsg('Error de conexión');
       } finally {
-        // Liberamos el semáforo al terminar (sea éxito o error)
         isConnectingRef.current = false;
       }
     };
@@ -126,24 +119,17 @@ export function useVideoLogic(roomId, session, onLeave) {
     };
   }, [roomId]); 
 
-
-  // --- LOGICA SUPABASE (El corazón del problema) ---
   const joinSupabaseRoom = (peerId) => {
       const topic = `room_${roomId}`;
       const uniqueKey = `${myUserId}-${peerId}`;
-      
-      // 1. REUTILIZACIÓN SEGURA:
-      // Verificamos si ya existe una instancia de este canal en el cliente.
       const allChannels = supabase.getChannels();
       let channel = allChannels.find(c => c.topic === topic || c.topic === `realtime:${topic}`);
 
-      // Si existe y está unido, lo desuscribimos suavemente para reiniciar nuestra presencia
       if (channel) {
-          // No usamos removeChannel, solo unsubscribe
           channel.unsubscribe(); 
       }
 
-      // 2. CREACIÓN NUEVA
+      // CREACIÓN NUEVA
       channel = supabase.channel(topic, {
           config: { presence: { key: uniqueKey } }
       });
@@ -155,12 +141,21 @@ export function useVideoLogic(roomId, session, onLeave) {
             const state = channel.presenceState();
             const users = [];
             for (const k in state) {
-                const u = state[k][0];
-                if (u && u.peerId) users.push(u);
+                state[k].forEach(u => {
+                    if(u && u.peerId && u.online_at) users.push(u);
+                });
             }
 
-            // ORDENAMIENTO POR FECHA (CRÍTICO PARA HOST)
-            users.sort((a, b) => new Date(a.online_at).getTime() - new Date(b.online_at).getTime());
+            // ORDENAMIENTO POR FECHA Y PEERID (Consistente para Host y Guests)
+            users.sort((a, b) => {
+                const timeA = new Date(a.online_at).getTime();
+                const timeB = new Date(b.online_at).getTime();
+                
+                if (timeA !== timeB) {
+                    return timeA - timeB;
+                }
+                return a.peerId.localeCompare(b.peerId);
+            });
 
             // LOGICA HOST
             const amIHost = users.length > 0 && users[0].peerId === peerId;
@@ -206,9 +201,8 @@ export function useVideoLogic(roomId, session, onLeave) {
 
   // --- HELPERS ---
   const cleanupResources = async () => {
-      console.log("🧹 Limpieza suave...");
+      console.log("Limpieza suave...");
       
-      // SOLO Unsubscribe. Nunca removeChannel.
       if (channelRef.current) {
           await channelRef.current.unsubscribe().catch(() => {});
           channelRef.current = null;
@@ -255,7 +249,6 @@ export function useVideoLogic(roomId, session, onLeave) {
       } catch(e) { console.error(e); }
   };
   
-  // Loop de llamadas (Auto-Call)
   useEffect(() => {
       if (!streamRef.current || !peerRef.current) return;
       const interval = setInterval(() => {
@@ -264,11 +257,9 @@ export function useVideoLogic(roomId, session, onLeave) {
               const targetId = u.peerId;
               if (remoteStreams[targetId] || callsRef.current[targetId]) return;
               
-              // Comparar tiempos para decidir quién llama
               const myTime = new Date(myJoinTime.current).getTime();
               const targetTime = new Date(u.online_at).getTime();
               
-              // El más nuevo llama al más viejo
               if (myTime > targetTime) callUser(targetId);
           });
       }, 2000);
