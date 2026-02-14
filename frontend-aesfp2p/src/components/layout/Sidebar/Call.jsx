@@ -4,7 +4,7 @@ import {
   MicrophoneIcon, 
   VideoCameraIcon,
   VideoCameraSlashIcon, 
-  Cog6ToothIcon // El engranaje
+  Cog6ToothIcon 
 } from '@heroicons/react/24/solid';
 
 export default function Call({ 
@@ -13,20 +13,43 @@ export default function Call({
     onToggleMic, 
     onToggleCam, 
     micOn = true, 
-    cameraOn = false 
+    cameraOn = false,
+    
+    // 👇 DATOS NUEVOS
+    isHost,
+    statusMsg,
+    supabaseStatus
 }) {
   return (
     <div className="bg-gray-850 border-t border-gray-700 p-2 pb-1">
-        {/* Cabecera Verde */}
+        
+        {/* CABECERA CON ESTADO */}
         <div className="flex items-center justify-between mb-1 px-1">
-            <span className="text-emerald-400 text-[10px] font-bold flex items-center gap-1 uppercase tracking-wide">
-                <SignalIcon className="w-3 h-3" />
-                Voz Conectada
+            <div className="flex items-center gap-2">
+                <span className="text-emerald-400 text-[10px] font-bold flex items-center gap-1 uppercase tracking-wide">
+                    <SignalIcon className="w-3 h-3" />
+                    Voz
+                </span>
+                
+                {/* BADGE DE HOST / GUEST */}
+                <span className={`text-[9px] px-1 py-px rounded border font-bold tracking-wider ${
+                    isHost 
+                    ? 'border-yellow-500/50 text-yellow-400 bg-yellow-900/20' 
+                    : 'border-blue-500/50 text-blue-400 bg-blue-900/20'
+                }`}>
+                    {isHost ? 'HOST' : 'GUEST'}
+                </span>
+            </div>
+
+            {/* STATUS DE CONEXIÓN */}
+            <span className={`text-[9px] font-mono truncate max-w-[80px] ${
+                supabaseStatus === 'SUBSCRIBED' ? 'text-emerald-500' : 'text-gray-500'
+            }`}>
+                {supabaseStatus === 'SUBSCRIBED' ? 'Conectado' : statusMsg || '...'}
             </span>
-            <span className="text-[10px] text-emerald-600/70 font-mono">RTC Connected</span>
         </div>
         
-        {/* Tarjeta de Controles */}
+        {/* TARJETA PRINCIPAL */}
         <div className="bg-gray-900 p-2 rounded border border-gray-700/50 flex flex-col gap-2">
             
             {/* Nombre del Canal */}
@@ -35,8 +58,9 @@ export default function Call({
                     <span className="text-white text-xs font-bold truncate">
                         {channelName || 'Sala de Voz'}
                     </span>
-                    <span className="text-[10px] text-gray-400 truncate">
-                        En directo
+                    <span className="text-[10px] text-gray-400 truncate flex items-center gap-1">
+                         <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                         En directo
                     </span>
                 </div>
             </div>
@@ -50,7 +74,6 @@ export default function Call({
                         className={`p-1.5 rounded transition-colors ${micOn ? 'text-gray-400 hover:bg-gray-700 hover:text-white' : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}
                         title={micOn ? "Silenciar" : "Activar Micro"}
                     >
-                        {/* Aquí podrías poner el icono tachado si micOn es false */}
                         <MicrophoneIcon className="w-5 h-5" /> 
                     </button>
 
@@ -63,16 +86,16 @@ export default function Call({
                         {cameraOn ? <VideoCameraIcon className="w-5 h-5" /> : <VideoCameraSlashIcon className="w-5 h-5" />}
                     </button>
 
-                     {/* Botón Configuración de Llamada */}
+                     {/* Botón Configuración */}
                      <button 
                         className="p-1.5 rounded text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
-                        title="Configuración de Voz"
+                        title="Configuración"
                     >
                         <Cog6ToothIcon className="w-5 h-5" />
                     </button>
                 </div>
 
-                {/* Botón Colgar (Rojo) */}
+                {/* Botón Colgar */}
                 <button 
                     onClick={onLeave}
                     className="p-1.5 rounded hover:bg-red-500 text-gray-400 hover:text-white transition-colors"

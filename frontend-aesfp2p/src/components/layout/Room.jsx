@@ -67,7 +67,7 @@ export default function Room() {
       )
       .subscribe(status => setIsConnected(status === 'SUBSCRIBED'));
 
-    return () => supabase.removeChannel(channel);
+    return () => channel.unsubscribe();
   }, [roomId]);
 
   // 3. AUTO SCROLL AL FINAL

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { SpeakerWaveIcon } from '@heroicons/react/24/solid';
 
 import Sidebar from '../components/layout/Sidebar';
 import VideoCall from '../components/layout/VideoCall'; 
+// 👇 1. IMPORTAR EL COMPONENTE DRAGGABLE
+import DraggableWindow from '../components/layout/DraggableWindow';
 import { useVideoLogic } from '../hooks/useVideoLogic';
 
 export default function Dashboard() {
@@ -15,11 +16,14 @@ export default function Dashboard() {
   const [activeVoiceId, setActiveVoiceId] = useState(null); 
   const [activeVoiceRooms, setActiveVoiceRooms] = useState([]);
 
+  const [isVideoExpanded, setIsVideoExpanded] = useState(false);
+
   const navigate = useNavigate();
   const { roomId } = useParams(); 
 
   const handleLeaveVoice = () => {
     setActiveVoiceId(null);
+    setIsVideoExpanded(false);
   };
 
   const sessionObject = profile ? { user: { id: profile.id, user_metadata: profile } } : null;
@@ -97,38 +101,41 @@ export default function Dashboard() {
           hasWebcam={hasWebcam}
           onToggleMic={toggleMic}
           onToggleCam={toggleCamera}
+          isHost={isHost}
+          statusMsg={statusMsg}
+          supabaseStatus={supabaseStatus}
       />
 
       <main className="flex-1 flex flex-col bg-gray-700 min-w-0 relative z-10">
         <Outlet />
       </main>
+
       {activeVoiceId && profile && (
-        <div className="absolute top-4 right-4 z-50 w-80 bg-gray-900 border border-gray-600 shadow-2xl rounded-lg overflow-hidden flex flex-col">
-             <div className="bg-gray-800 p-2 flex justify-between items-center border-b border-gray-700 cursor-move">
-                <span className="text-xs font-bold text-white flex items-center gap-2">
-                    <SpeakerWaveIcon className="w-3 h-3 text-emerald-400"/>
-                    {channels.find(c=>c.id===activeVoiceId)?.name || 'Sala de Voz'}
-                </span>
-                <button onClick={handleManualDisconnect} className="text-gray-400 hover:text-red-400 transition-colors">
-                    ✖
-                </button>
-             </div>
-             
-             <div className="h-64 relative bg-black"> 
-                 <VideoCall 
-                    localStream={localStream}
-                    remoteStreams={remoteStreams}
-                    detectedUsers={detectedUsers}
-                    cameraOn={cameraOn}
-                    micOn={micOn}
-                    myAvatar={profile.avatar_url}
-                    statusMsg={statusMsg}
-                    supabaseStatus={supabaseStatus}
-                    isHost={isHost}
-                />
-             </div>
-        </div>
+        <DraggableWindow 
+            isExpanded={isVideoExpanded}
+            onToggleExpand={() => setIsVideoExpanded(!isVideoExpanded)}
+        >
+             <VideoCall 
+                localStream={localStream}
+                remoteStreams={remoteStreams}
+                detectedUsers={detectedUsers}
+                cameraOn={cameraOn}
+                micOn={micOn}
+                myAvatar={profile.avatar_url}
+                statusMsg={statusMsg}
+                supabaseStatus={supabaseStatus}
+                isHost={isHost}
+                hasMic={hasMic}
+                hasWebcam={hasWebcam}
+                toggleMic={toggleMic}
+                toggleCamera={toggleCamera}
+                handleManualDisconnect={handleManualDisconnect}
+                isExpanded={isVideoExpanded}
+                onToggleExpand={() => setIsVideoExpanded(!isVideoExpanded)}
+            />
+        </DraggableWindow>
       )}
+
     </div>
   );
 }
