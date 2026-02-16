@@ -1,39 +1,23 @@
 import { useEffect, useState } from 'react';
-import { Outlet, useParams, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useVoice } from '../context/VoiceContext';
 
 import Sidebar from '../components/layout/Sidebar';
 import VideoCall from '../components/layout/VideoCall'; 
-// 👇 1. IMPORTAR EL COMPONENTE DRAGGABLE
 import DraggableWindow from '../components/layout/DraggableWindow';
-import { useVideoLogic } from '../hooks/useVideoLogic';
 
 export default function Dashboard() {
   const [profile, setProfile] = useState(null);
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  const [activeVoiceId, setActiveVoiceId] = useState(null); 
-  const [activeVoiceRooms, setActiveVoiceRooms] = useState([]);
-
   const [isVideoExpanded, setIsVideoExpanded] = useState(false);
 
   const navigate = useNavigate();
   const { roomId } = useParams(); 
-
-  const handleLeaveVoice = () => {
-    setActiveVoiceId(null);
-    setIsVideoExpanded(false);
-  };
-
-  const sessionObject = profile ? { user: { id: profile.id, user_metadata: profile } } : null;
-
-  const {
-    localStream, remoteStreams, detectedUsers,
-    micOn, cameraOn, hasMic, hasWebcam,
-    toggleMic, toggleCamera, handleManualDisconnect,
-    statusMsg, supabaseStatus, isHost
-  } = useVideoLogic(activeVoiceId, sessionObject, handleLeaveVoice);
+  
+  const { activeRoomId } = useVoice(); 
 
   useEffect(() => {
     const getData = async () => {
@@ -63,76 +47,37 @@ export default function Dashboard() {
     navigate('/login');
   };
 
-  const crearSalaTemporal = () => {
-    const newId = `voice-temp-${Math.random().toString(36).substring(2, 7)}`;
-    setActiveVoiceRooms(prev => [...prev, { id: newId, name: 'Sala Privada', type: 'voice' }]);
-    setActiveVoiceId(newId);
-  };
-
-  const handleJoinVoice = (channelId) => {
-    if (activeVoiceId === channelId) return;
-    setActiveVoiceId(channelId);
-  };
+  if (loading) return <div className="h-screen bg-gray-900 flex items-center justify-center text-emerald-500">Cargando...</div>;
 
   const textChannels = channels.filter(c => c.type === 'text');
-  const dbVoiceChannels = channels.filter(c => c.type === 'voice');
-
-  if (loading) return <div className="h-screen bg-gray-900 flex items-center justify-center text-emerald-500">Cargando...</div>;
 
   return (
     <div className="flex h-screen bg-gray-900 text-white overflow-hidden font-sans relative">
       
+      {/* SIDEBAR */}
       <Sidebar 
           profile={profile}
-          textChannels={textChannels}
-          dbVoiceChannels={dbVoiceChannels}
-          activeVoiceRooms={activeVoiceRooms}
-          activeVoiceId={activeVoiceId}
+          textChannels={textChannels} // Solo pasamos texto
           roomId={roomId}
-          
-          onJoinVoice={handleJoinVoice}
-          onCreateTempRoom={crearSalaTemporal}
           onLogout={handleLogout}
-          
-          onLeaveVoice={handleManualDisconnect}
-          micOn={micOn}
-          cameraOn={cameraOn}
-          hasMic={hasMic}
-          hasWebcam={hasWebcam}
-          onToggleMic={toggleMic}
-          onToggleCam={toggleCamera}
-          isHost={isHost}
-          statusMsg={statusMsg}
-          supabaseStatus={supabaseStatus}
       />
 
+      {/* ÁREA PRINCIPAL (CHAT DE TEXTO) */}
       <main className="flex-1 flex flex-col bg-gray-700 min-w-0 relative z-10">
         <Outlet />
       </main>
 
-      {activeVoiceId && profile && (
+      {/* VENTANA FLOTANTE DE VIDEOLLAMADA */}
+      {/* Se activa automáticamente cuando activeRoomId existe (al crear o unirse) */}
+      {activeRoomId && (
         <DraggableWindow 
             isExpanded={isVideoExpanded}
             onToggleExpand={() => setIsVideoExpanded(!isVideoExpanded)}
         >
              <VideoCall 
-                localStream={localStream}
-                remoteStreams={remoteStreams}
-                detectedUsers={detectedUsers}
-                cameraOn={cameraOn}
-                micOn={micOn}
-                myAvatar={profile.avatar_url}
-                statusMsg={statusMsg}
-                supabaseStatus={supabaseStatus}
-                isHost={isHost}
-                hasMic={hasMic}
-                hasWebcam={hasWebcam}
-                toggleMic={toggleMic}
-                toggleCamera={toggleCamera}
-                handleManualDisconnect={handleManualDisconnect}
                 isExpanded={isVideoExpanded}
                 onToggleExpand={() => setIsVideoExpanded(!isVideoExpanded)}
-            />
+             />
         </DraggableWindow>
       )}
 

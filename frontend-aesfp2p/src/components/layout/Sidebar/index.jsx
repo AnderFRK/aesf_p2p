@@ -1,113 +1,120 @@
 import { Link } from 'react-router-dom';
-import { HashtagIcon, SpeakerWaveIcon, PlusIcon } from '@heroicons/react/24/solid';
+import { HashtagIcon, VideoCameraIcon, UserGroupIcon } from '@heroicons/react/24/solid';
+
+import { useVoice } from '../../../context/VoiceContext';
 
 import Profile from './Profile';
 import Call from './Call';
-import VoiceUsers from '../VoiceUsers';
 
 export default function Sidebar({ 
-    profile, textChannels, dbVoiceChannels, activeVoiceRooms, activeVoiceId, roomId, 
-    onJoinVoice, onLeaveVoice, onCreateTempRoom, onLogout,
-    micOn, cameraOn, hasMic, hasWebcam, onToggleMic, onToggleCam,
-    isHost, statusMsg, supabaseStatus
+    profile, 
+    textChannels, 
+    roomId,
+    onLogout
 }) {
 
-  const currentVoiceChannel = dbVoiceChannels.find(c => c.id === activeVoiceId) 
-  || activeVoiceRooms.find(c => c.id === activeVoiceId);
+  const { 
+    joinRoom, 
+    activeRoomId,
+    leaveRoom,
+    micOn, cameraOn, toggleMic, toggleCam, isHost, statusMsg, supabaseStatus, hasMic, hasWebcam 
+  } = useVoice();
+
+  // --- ACCIONES PARA SALAS TEMPORALES ---
+  
+  // Crear Sala: Genera un ID random y se une
+  const handleCreateRoom = () => {
+      const randomId = Math.random().toString(36).substring(2, 7); // ej: "xk9s2"
+      joinRoom(randomId);
+  };
+
+  // Unirse a Sala: Pide el código al usuario
+  const handleJoinRoom = () => {
+      const code = window.prompt("Ingresa el código de la sala (ej: xk9s2):");
+      if (code && code.trim().length > 0) {
+          joinRoom(code.trim());
+      }
+  };
 
   return (
     <aside className="w-64 bg-gray-800 flex flex-col border-r border-gray-700 relative z-20 shrink-0">
         
-        {/* HEADER */}
         <div className="h-12 flex items-center px-4 font-bold border-b border-gray-700 shadow-sm text-emerald-400">
           AESF P2P Alpha
         </div>
         
-        {/* NAV */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-6 custom-scrollbar">
           
-          {/* SECCIÓN TEXTO */}
           <div>
             <h3 className="px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">
-              <span className="text-gray-600">v</span> Texto
+              <span className="text-emerald-500">●</span> Salas Temporales
+            </h3>
+            <div className="space-y-1 px-1">
+                <button 
+                    onClick={handleCreateRoom}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 text-gray-300 hover:text-white hover:bg-emerald-600/20 hover:border-emerald-500/50 border border-transparent rounded transition-all text-sm group"
+                >
+                    <div className="p-1 bg-gray-700 rounded group-hover:bg-emerald-600 transition-colors">
+                        <VideoCameraIcon className="w-4 h-4" />
+                    </div>
+                    <span>Crear Nueva Sala</span>
+                </button>
+                <button 
+                    onClick={handleJoinRoom}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 text-gray-300 hover:text-white hover:bg-blue-600/20 hover:border-blue-500/50 border border-transparent rounded transition-all text-sm group"
+                >
+                    <div className="p-1 bg-gray-700 rounded group-hover:bg-blue-600 transition-colors">
+                        <UserGroupIcon className="w-4 h-4" />
+                    </div>
+                    <span>Unirse con Código</span>
+                </button>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-700/50 mx-2"></div>
+          <div>
+            <h3 className="px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+              <span className="text-gray-600">#</span> Chat de Texto
             </h3>
             <div className="space-y-0.5">
               {textChannels.map((canal) => (
-                <CanalItem key={canal.id} canal={canal} activeId={roomId} onJoinVoice={onJoinVoice} />
+                <Link 
+                    key={canal.id} 
+                    to={`/channels/${canal.id}`} 
+                    className={`group flex items-center px-2 py-1.5 rounded mx-1 transition-all duration-200 ${
+                        roomId === canal.id 
+                            ? 'bg-gray-600/80 text-white shadow-sm' 
+                            : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                    }`}
+                >
+                    <HashtagIcon className={`mr-2 h-4 w-4 ${roomId === canal.id ? 'text-white' : 'text-gray-500 group-hover:text-gray-400'}`} />
+                    <span className="truncate font-medium text-sm">{canal.name}</span>
+                </Link>
               ))}
             </div>
           </div>
 
-          {/* SECCIÓN VOZ */}
-          <div>
-            <div className="flex items-center justify-between px-2 mb-2 group">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                <span className="text-gray-600">v</span> Voz
-              </h3>
-              <button onClick={onCreateTempRoom} className="text-gray-400 hover:text-white transition-colors" title="Crear sala">
-                <PlusIcon className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="space-y-0.5">
-              {dbVoiceChannels.map((canal) => (
-                // Nota: Aquí 'activeId' es el ID del canal de voz donde estás conectado actualmente
-                <CanalItem key={canal.id} canal={canal} activeId={activeVoiceId} onJoinVoice={onJoinVoice}/>
-              ))}
-              {activeVoiceRooms.map((canal) => (
-                 <CanalItem key={canal.id} canal={canal} activeId={activeVoiceId} onJoinVoice={onJoinVoice}/>
-              ))}
-            </div>
-          </div>
         </nav>
 
-        {/* CONTROLES DE LLAMADA ACTIVOS */}
-        {activeVoiceId && (
+        {/* MINI PLAYER / CONTROL DE LLAMADA EN EL SIDEBAR (Opcional) */}
+        {/* Solo se muestra si hay sala activa. Puedes quitarlo si prefieres solo la ventana flotante */}
+        {activeRoomId && (
             <Call 
-                channelName={currentVoiceChannel?.name}
-                onLeave={onLeaveVoice}
-                micOn={micOn} cameraOn={cameraOn} onToggleMic={onToggleMic} onToggleCam={onToggleCam}
-                hasMic={hasMic} hasWebcam={hasWebcam}
-                isHost={isHost} statusMsg={statusMsg} supabaseStatus={supabaseStatus}
+                channelName={`Sala: ${activeRoomId}`}
+                onLeave={leaveRoom}
+                micOn={micOn} 
+                cameraOn={cameraOn} 
+                onToggleMic={toggleMic} 
+                onToggleCam={toggleCam}
+                hasMic={hasMic} 
+                hasWebcam={hasWebcam}
+                isHost={isHost} 
+                statusMsg={statusMsg} 
+                supabaseStatus={supabaseStatus}
             />
         )}
         
         <Profile user={profile} onLogout={onLogout} />
     </aside>
-  );
-}
-
-// COMPONENTE CANAL ITEM ACTUALIZADO
-function CanalItem({ canal, activeId, onJoinVoice }) {
-  // activeId aquí representa el canal seleccionado (o conectado en el caso de voz)
-  const isActive = activeId === canal.id;
-  const isVoice = canal.type === 'voice';
-
-  if (isVoice) {
-      return (
-        <div className="mb-0.5">
-          {/* Nombre del Canal (Clickeable) */}
-          <div 
-            onClick={() => onJoinVoice(canal.id)} 
-            className={`group flex items-center px-2 py-1.5 rounded mx-1 transition-all duration-200 cursor-pointer ${isActive ? 'bg-gray-700/80 text-white shadow-sm' : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200'}`}
-          >
-            <SpeakerWaveIcon className={`mr-2 h-4 w-4 ${isActive ? 'text-white' : 'text-gray-500 group-hover:text-gray-400'}`} />
-            <span className={`truncate font-medium ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-gray-300'}`}>{canal.name}</span>
-          </div>
-
-          {/* AQUÍ ESTÁ EL CAMBIO CLAVE */}
-          {/* Pasamos 'activeRoomId' para que VoiceUsers sepa si esta es la sala activa */}
-          <VoiceUsers roomId={canal.id} activeRoomId={activeId} />
-        </div>
-      );
-  }
-
-  // Item de Texto
-  return (
-    <div className="mb-0.5">
-      <Link to={`/channels/${canal.id}`} className={`group flex items-center px-2 py-1.5 rounded mx-1 transition-all duration-200 ${isActive ? 'bg-gray-600/80 text-white shadow-sm' : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}>
-         <HashtagIcon className={`mr-2 h-5 w-5 ${isActive ? 'text-white' : 'text-gray-500 group-hover:text-gray-400'}`} />
-        <span className={`truncate font-medium ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-gray-300'}`}>{canal.name}</span>
-      </Link>
-    </div>
   );
 }

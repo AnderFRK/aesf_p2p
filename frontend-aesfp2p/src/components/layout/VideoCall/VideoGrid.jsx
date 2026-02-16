@@ -21,13 +21,9 @@ export default function VideoGrid({ localStream, remoteStreams, detectedUsers, c
                   <span className="text-[10px] text-emerald-500 font-bold tracking-wider uppercase">Tú</span>
               </div>
           )}
-          {/* Indicador de Micrófono Local */}
           <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full border border-black shadow-sm ${micOn ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
       </div>
-
-      {/* VIDEOS REMOTOS */}
       {Object.entries(remoteStreams).map(([peerId, stream]) => {
-          // Buscamos la info del usuario. Importante: usamos peerId para vincular.
           const userInfo = detectedUsers.find(u => u.peerId === peerId) || { username: 'Conectando...' };
           return (
             <RemoteVideo 
@@ -57,7 +53,6 @@ function RemoteVideo({ stream, username, avatar }) {
         const checkTracks = () => {
             if (!isMounted || !stream) return;
             const videoTrack = stream.getVideoTracks()[0];
-            // Un track es válido si existe, está habilitado y no es el "fake track" negro
             const active = videoTrack && videoTrack.enabled && videoTrack.readyState === 'live';
             if (hasVideo !== active) setHasVideo(active);
         };
@@ -89,7 +84,6 @@ function RemoteVideo({ stream, username, avatar }) {
                 </div>
             )}
             
-            {/* Etiqueta de nombre */}
             <div className="absolute bottom-1 left-1 right-1">
                 <span className="block text-[9px] bg-black/70 backdrop-blur-sm text-white px-2 py-0.5 rounded shadow-sm truncate max-w-fit">
                     {username}

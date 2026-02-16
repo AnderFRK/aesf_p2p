@@ -1,17 +1,37 @@
 import VideoGrid from './VideoGrid';
-import Controls from './Controls';
+import Controls from './Controls'; 
 import { ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/react/24/solid';
 
+import { useVoice } from '../../../context/VoiceContext';
+
 export default function VideoCall({ 
-    localStream, remoteStreams, detectedUsers, statusMsg, supabaseStatus, isHost, myAvatar,
-    cameraOn, micOn, hasWebcam, hasMic, toggleMic, toggleCamera, handleManualDisconnect, handleRefresh,
-    isExpanded,
-    onToggleExpand
+    isExpanded, 
+    onToggleExpand 
 }) {
+  const { 
+      localStream, 
+      remoteStreams, 
+      detectedUsers = [],
+      statusMsg, 
+      supabaseStatus, 
+      isHost, 
+      myAvatar,
+      cameraOn, 
+      micOn, 
+      hasWebcam, 
+      hasMic, 
+      toggleMic, 
+      toggleCam,
+      handleManualDisconnect, 
+      joinRoom 
+  } = useVoice();
 
   return (
     <div className="bg-gray-900 h-full flex flex-col overflow-hidden">
+      
+      {/* HEADER */}
       <div className={`bg-gray-800 p-3 border-b border-gray-700 flex justify-between items-center shrink-0 shadow-md z-10 drag-handle ${!isExpanded ? 'cursor-move' : ''}`}>
+        
         <div className="flex flex-col gap-0.5 pointer-events-none select-none">
             <div className="flex items-center gap-2">
                 <h3 className="text-emerald-400 font-bold flex items-center gap-1.5 text-xs uppercase tracking-wide">
@@ -27,16 +47,21 @@ export default function VideoCall({
                 <span className={supabaseStatus === 'SUBSCRIBED' ? 'text-emerald-500' : 'text-red-400'}>
                     {supabaseStatus === 'SUBSCRIBED' ? '● LIVE' : '○ ...'}
                 </span>
-                <span>👥 {detectedUsers.length + 1}</span>
+                <span>👥 {(detectedUsers?.length || 0) + 1}</span>
             </div>
         </div>
 
         <div className="flex items-center gap-2" onMouseDown={(e) => e.stopPropagation()}>
              <div className="scale-90 origin-right"> 
                 <Controls 
-                    micOn={micOn} cameraOn={cameraOn} toggleMic={toggleMic} toggleCamera={toggleCamera} 
-                    handleManualDisconnect={handleManualDisconnect} handleRefresh={handleRefresh}
-                    hasWebcam={hasWebcam} hasMic={hasMic}
+                    micOn={micOn} 
+                    cameraOn={cameraOn} 
+                    toggleMic={toggleMic} 
+                    toggleCamera={toggleCam}
+                    handleManualDisconnect={handleManualDisconnect} 
+                    handleRefresh={() => joinRoom(useVoice().activeRoomId)}
+                    hasWebcam={hasWebcam} 
+                    hasMic={hasMic}
                 />
             </div>
             
@@ -53,10 +78,16 @@ export default function VideoCall({
             </button>
         </div>
       </div>
+
+      {/* BODY */}
       <div className="flex-1 bg-black relative overflow-hidden">
         <VideoGrid 
-            localStream={localStream} remoteStreams={remoteStreams} detectedUsers={detectedUsers}
-            cameraOn={cameraOn} micOn={micOn} myAvatar={myAvatar}
+            localStream={localStream} 
+            remoteStreams={remoteStreams} 
+            detectedUsers={detectedUsers || []}
+            cameraOn={cameraOn} 
+            micOn={micOn} 
+            myAvatar={myAvatar}
         />
       </div>
     </div>

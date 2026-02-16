@@ -1,55 +1,61 @@
-// Codigo inservible
-import { useEffect, useState, useRef } from 'react';
+import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import Peer from 'peerjs';
 import { supabase } from '../lib/supabase'; 
 
-export function useVideoLogic(roomId, session, onLeave) {
-  // Datos
-  const myUserId = session?.user?.id || `guest-${Math.floor(Math.random() * 10000)}`;
-  const myUsername = session?.user?.user_metadata?.username || 'Usuario';
-  const myAvatar = session?.user?.user_metadata?.avatar_url;
+const VoiceContext = createContext();
 
-  // Estados
-  const [statusMsg, setStatusMsg] = useState('Iniciando...');
+export function useVoice() {
+  return useContext(VoiceContext);
+}
+
+export function VoiceProvider({ children, session }) {
+  // --- 1. ESTADOS (Mismos que useVideoLogic) ---
+  const [activeRoomId, setActiveRoomId] = useState(null); 
+  
+  const [statusMsg, setStatusMsg] = useState('Desconectado');
   const [isHost, setIsHost] = useState(false);
-  const [detectedUsers, setDetectedUsers] = useState([]);
+  const [detectedUsers, setDetectedUsers] = useState([]); 
   const [remoteStreams, setRemoteStreams] = useState({});
   const [localStream, setLocalStream] = useState(null);
   
-  // Controles UI
+  // UI Controls
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(true);
   const [hasWebcam, setHasWebcam] = useState(true);
   const [hasMic, setHasMic] = useState(true);
 
-  // Referencias (No causan re-renders)
+  // --- 2. REFS (Mismos que useVideoLogic) ---
   const peerRef = useRef(null);
   const channelRef = useRef(null);
   const streamRef = useRef(null);
   const callsRef = useRef({});
-  const myJoinTime = useRef(new Date().toISOString()); 
-  const mountedRef = useRef(true);
+  const myJoinTime = useRef(null); 
   const isConnectingRef = useRef(false);
 
-  // --- EFECTO PRINCIPAL ---
-  useEffect(() => {
-    if (!roomId) return;
-    mountedRef.current = true;
+  // Datos Usuario
+  const myUserId = session?.user?.id || `guest-${Math.floor(Math.random() * 10000)}`;
+  const myUsername = session?.user?.user_metadata?.username || 'Usuario';
+  const myAvatar = session?.user?.user_metadata?.avatar_url;
 
-    const init = async () => {
-      if (isConnectingRef.current) return;
-      isConnectingRef.current = true;
 
-      try {
+
+  const joinRoom = async (roomId) => {
+    if (activeRoomId === roomId) return;
+    if (activeRoomId) await leaveRoom(); 
+
+    setActiveRoomId(roomId);
+    myJoinTime.current = new Date().toISOString(); 
+    
+    if (isConnectingRef.current) return;
+    isConnectingRef.current = true;
+
+    try {
         setStatusMsg('Hardware...');
-        
-        // --- MEDIA SETUP ---
         let stream = new MediaStream();
         try {
             const vStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            if (!mountedRef.current) { vStream.getTracks().forEach(t => t.stop()); return; }
             const vTrack = vStream.getVideoTracks()[0];
-            vTrack.enabled = false; 
+            vTrack.enabled = false;
             stream.addTrack(vTrack);
             setHasWebcam(true);
         } catch (e) {
@@ -59,7 +65,6 @@ export function useVideoLogic(roomId, session, onLeave) {
 
         try {
             const aStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-            if (!mountedRef.current) { aStream.getTracks().forEach(t => t.stop()); return; }
             const aTrack = aStream.getAudioTracks()[0];
             stream.addTrack(aTrack);
             setHasMic(true);
@@ -70,57 +75,44 @@ export function useVideoLogic(roomId, session, onLeave) {
             stream.addTrack(createFakeAudioTrack());
         }
 
-        if (!mountedRef.current) return;
         setLocalStream(stream);
         streamRef.current = stream;
-
-        // --- PEERJS SETUP ---
         setStatusMsg('PeerJS...');
         if (peerRef.current) peerRef.current.destroy();
 
         const peer = new Peer(undefined, {
-          config: {
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-          }
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            }
         });
         peerRef.current = peer;
 
         peer.on('open', (id) => {
-          if (!mountedRef.current) return;
-          console.log("PeerID:", id);
-          setStatusMsg('Conectando Sala...');
-          joinSupabaseRoom(id);
+            console.log("PeerID:", id);
+            setStatusMsg('Conectando Sala...');
+            joinSupabaseRoom(roomId, id);
         });
 
         peer.on('call', (call) => {
-           call.answer(streamRef.current);
-           setupCallEvents(call, call.peer);
+            call.answer(streamRef.current);
+            setupCallEvents(call, call.peer);
         });
-        
+
         peer.on('error', (err) => console.error("Peer Error:", err));
 
-      } catch (err) {
+    } catch (err) {
         console.error("Error Init:", err);
         setStatusMsg('Error de conexión');
-      } finally {
+    } finally {
         isConnectingRef.current = false;
-      }
-    };
+    }
+  };
 
-    init();
 
-    // --- CLEANUP AL SALIR ---
-    return () => {
-      mountedRef.current = false;
-      isConnectingRef.current = false;
-      cleanupResources();
-    };
-  }, [roomId]); 
-
-  const joinSupabaseRoom = (peerId) => {
+  const joinSupabaseRoom = (roomId, peerId) => {
       const topic = `room_${roomId}`;
       const uniqueKey = `${myUserId}-${peerId}`;
       const allChannels = supabase.getChannels();
@@ -130,7 +122,6 @@ export function useVideoLogic(roomId, session, onLeave) {
           channel.unsubscribe(); 
       }
 
-      // CREACIÓN NUEVA
       channel = supabase.channel(topic, {
           config: { presence: { key: uniqueKey } }
       });
@@ -138,7 +129,6 @@ export function useVideoLogic(roomId, session, onLeave) {
 
       channel
         .on('presence', { event: 'sync' }, () => {
-            if (!mountedRef.current) return;
             const state = channel.presenceState();
             const users = [];
             for (const k in state) {
@@ -147,24 +137,18 @@ export function useVideoLogic(roomId, session, onLeave) {
                 });
             }
 
-            // ORDENAMIENTO POR FECHA Y PEERID (Consistente para Host y Guests)
             users.sort((a, b) => {
                 const timeA = new Date(a.online_at).getTime();
                 const timeB = new Date(b.online_at).getTime();
-                
-                if (timeA !== timeB) {
-                    return timeA - timeB;
-                }
+                if (timeA !== timeB) return timeA - timeB;
                 return a.peerId.localeCompare(b.peerId);
             });
 
-            // LOGICA HOST
             const amIHost = users.length > 0 && users[0].peerId === peerId;
             setIsHost(amIHost);
             
-            // OTHERS
             const others = users.filter(u => u.peerId !== peerId);
-            setDetectedUsers(others);
+            setDetectedUsers(others); 
 
             const role = amIHost ? 'HOST' : 'GUEST';
             setStatusMsg(others.length > 0 ? `En línea (${role})` : `Esperando (${role})`);
@@ -173,8 +157,6 @@ export function useVideoLogic(roomId, session, onLeave) {
             leftPresences.forEach(p => removeRemoteStream(p.peerId));
         })
         .subscribe(async (status) => {
-            if (!mountedRef.current) return;
-            
             if (status === 'SUBSCRIBED') {
                 const trackData = {
                     userId: myUserId,
@@ -186,10 +168,8 @@ export function useVideoLogic(roomId, session, onLeave) {
                 
                 await channel.track(trackData);
 
-                // Heartbeat para mantener viva la conexión
-                // Solo enviamos si el canal está en estado 'joined'
                 const interval = setInterval(() => {
-                    if (channelRef.current?.state === 'joined' && mountedRef.current) {
+                    if (channelRef.current === channel && channel.state === 'joined') {
                         channel.track(trackData);
                     } else {
                         clearInterval(interval);
@@ -199,21 +179,16 @@ export function useVideoLogic(roomId, session, onLeave) {
         });
   };
 
-
-  // --- HELPERS ---
-  const cleanupResources = async () => {
+  const leaveRoom = async () => {
       console.log("Limpieza suave...");
-      
       if (channelRef.current) {
           await channelRef.current.unsubscribe().catch(() => {});
           channelRef.current = null;
       }
-      
       if (peerRef.current) {
           peerRef.current.destroy();
           peerRef.current = null;
       }
-      
       if (streamRef.current) {
           streamRef.current.getTracks().forEach(t => t.stop());
           streamRef.current = null;
@@ -221,6 +196,10 @@ export function useVideoLogic(roomId, session, onLeave) {
       
       setRemoteStreams({});
       setDetectedUsers([]);
+      setActiveRoomId(null);
+      setIsHost(false);
+      setStatusMsg('Desconectado');
+      setCameraOn(false);
   };
 
   const setupCallEvents = (call, pid) => {
@@ -231,11 +210,7 @@ export function useVideoLogic(roomId, session, onLeave) {
   };
 
   const removeRemoteStream = (pid) => {
-      setRemoteStreams(prev => {
-          const n = {...prev};
-          delete n[pid];
-          return n;
-      });
+      setRemoteStreams(prev => { const n = {...prev}; delete n[pid]; return n; });
       if (callsRef.current[pid]) {
           callsRef.current[pid].close();
           delete callsRef.current[pid];
@@ -249,11 +224,13 @@ export function useVideoLogic(roomId, session, onLeave) {
           if (call) setupCallEvents(call, pid);
       } catch(e) { console.error(e); }
   };
-  
+
+  // --- 5. EFECTO DE AUTO-LLAMADA (Tu loop de 2s) ---
+  // Ahora depende de 'activeRoomId' para solo correr si estamos conectados
   useEffect(() => {
-      if (!streamRef.current || !peerRef.current) return;
+      if (!activeRoomId || !streamRef.current || !peerRef.current) return;
+
       const interval = setInterval(() => {
-          if (!mountedRef.current) return;
           detectedUsers.forEach(u => {
               const targetId = u.peerId;
               if (remoteStreams[targetId] || callsRef.current[targetId]) return;
@@ -265,9 +242,9 @@ export function useVideoLogic(roomId, session, onLeave) {
           });
       }, 2000);
       return () => clearInterval(interval);
-  }, [detectedUsers, remoteStreams]);
+  }, [detectedUsers, remoteStreams, activeRoomId]);
 
-  // Helpers de Hardware
+  // --- 6. HELPERS HARDWARE ---
   const createFakeVideoTrack = () => {
     const c = document.createElement('canvas'); c.width=640; c.height=480;
     c.getContext('2d').fillRect(0,0,640,480);
@@ -278,24 +255,46 @@ export function useVideoLogic(roomId, session, onLeave) {
      const t = d.stream.getAudioTracks()[0]; t.enabled=false; return t;
   };
 
-  const handleManualDisconnect = () => { cleanupResources(); if(onLeave) onLeave(); };
-  
+  // UI Toggles (Expuestos)
   const toggleMic = () => {
       if(streamRef.current) {
           const t = streamRef.current.getAudioTracks()[0];
           if(t) { t.enabled = !t.enabled; setMicOn(t.enabled); }
       }
   };
-  const toggleCamera = () => {
+  const toggleCam = () => {
       if(streamRef.current) {
           const t = streamRef.current.getVideoTracks()[0];
           if(t) { t.enabled = !t.enabled; setCameraOn(t.enabled); }
       }
   };
 
-  return {
-      localStream, remoteStreams, detectedUsers, statusMsg, isHost,
-      cameraOn, micOn, hasWebcam, hasMic, myAvatar,
-      toggleMic, toggleCamera, handleManualDisconnect
+  // --- 7. EXPORTAR VALORES ---
+  const value = {
+      // Estado de la sala
+      activeRoomId,
+      joinRoom,
+      leaveRoom,
+      handleManualDisconnect: leaveRoom,
+
+      // Datos
+      voiceUsers: detectedUsers, 
+      detectedUsers, 
+      localStream,
+      remoteStreams,
+      
+      isHost,
+      statusMsg,
+      supabaseStatus: 'SUBSCRIBED', 
+      
+      micOn,
+      cameraOn,
+      hasMic,
+      hasWebcam,
+      toggleMic,
+      toggleCam: toggleCam,
+      toggleCamera: toggleCam 
   };
+
+  return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>;
 }
