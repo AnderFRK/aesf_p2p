@@ -1,7 +1,7 @@
-// Codigo inservible
+// Codigo inservible, solo referencia para la logica de video en useVideoLogic.js
 import { useEffect, useState, useRef } from 'react';
 import Peer from 'peerjs';
-import { supabase } from '../lib/supabase'; 
+// import { supabase } from '../lib/supabase'; 
 
 export function useVideoLogic(roomId, session, onLeave) {
   // Datos

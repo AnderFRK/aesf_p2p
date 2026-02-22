@@ -1,6 +1,6 @@
-// CODIGO ZOMBIE
+// CODIGO INSERVIBLE, SOLO REFERENCIA PARA EL USO DE PRESENCE EN OTROS COMPONENTES
 import { useEffect, useState, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+// import { supabase } from '../lib/supabase';
 
 export function useChannelPresence(roomId) {
   const [users, setUsers] = useState([]);

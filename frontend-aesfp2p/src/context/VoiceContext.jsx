@@ -9,7 +9,6 @@ export function useVoice() {
 }
 
 export function VoiceProvider({ children, session }) {
-  // --- 1. ESTADOS (Mismos que useVideoLogic) ---
   const [activeRoomId, setActiveRoomId] = useState(null); 
   
   const [statusMsg, setStatusMsg] = useState('Desconectado');
@@ -18,13 +17,11 @@ export function VoiceProvider({ children, session }) {
   const [remoteStreams, setRemoteStreams] = useState({});
   const [localStream, setLocalStream] = useState(null);
   
-  // UI Controls
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(true);
   const [hasWebcam, setHasWebcam] = useState(true);
   const [hasMic, setHasMic] = useState(true);
 
-  // --- 2. REFS (Mismos que useVideoLogic) ---
   const peerRef = useRef(null);
   const channelRef = useRef(null);
   const streamRef = useRef(null);
@@ -32,7 +29,6 @@ export function VoiceProvider({ children, session }) {
   const myJoinTime = useRef(null); 
   const isConnectingRef = useRef(false);
 
-  // Datos Usuario
   const myUserId = session?.user?.id || `guest-${Math.floor(Math.random() * 10000)}`;
   const myUsername = session?.user?.user_metadata?.username || 'Usuario';
   const myAvatar = session?.user?.user_metadata?.avatar_url;
@@ -224,9 +220,6 @@ export function VoiceProvider({ children, session }) {
           if (call) setupCallEvents(call, pid);
       } catch(e) { console.error(e); }
   };
-
-  // --- 5. EFECTO DE AUTO-LLAMADA (Tu loop de 2s) ---
-  // Ahora depende de 'activeRoomId' para solo correr si estamos conectados
   useEffect(() => {
       if (!activeRoomId || !streamRef.current || !peerRef.current) return;
 
@@ -244,7 +237,6 @@ export function VoiceProvider({ children, session }) {
       return () => clearInterval(interval);
   }, [detectedUsers, remoteStreams, activeRoomId]);
 
-  // --- 6. HELPERS HARDWARE ---
   const createFakeVideoTrack = () => {
     const c = document.createElement('canvas'); c.width=640; c.height=480;
     c.getContext('2d').fillRect(0,0,640,480);
@@ -255,7 +247,6 @@ export function VoiceProvider({ children, session }) {
      const t = d.stream.getAudioTracks()[0]; t.enabled=false; return t;
   };
 
-  // UI Toggles (Expuestos)
   const toggleMic = () => {
       if(streamRef.current) {
           const t = streamRef.current.getAudioTracks()[0];
@@ -269,15 +260,12 @@ export function VoiceProvider({ children, session }) {
       }
   };
 
-  // --- 7. EXPORTAR VALORES ---
   const value = {
-      // Estado de la sala
       activeRoomId,
       joinRoom,
       leaveRoom,
       handleManualDisconnect: leaveRoom,
 
-      // Datos
       voiceUsers: detectedUsers, 
       detectedUsers, 
       localStream,
