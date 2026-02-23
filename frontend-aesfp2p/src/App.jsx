@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
+
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Room from './components/layout/Room'
-// 1. Ya lo tienes importado aquí, ¡bien!
+import Settings from './pages/Settings'
+
 import { VoiceProvider } from './context/VoiceContext';
 
 function App() {
@@ -30,15 +32,16 @@ function App() {
   }
 
   return (
-    // 2. ¡AQUÍ ES DONDE FALTABA! 
-    // Envolvemos todo el ruteo para que la voz funcione en cualquier página
     <VoiceProvider session={session}>
         <Routes>
           <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
           
           <Route path="/" element={session ? <Dashboard session={session} /> : <Navigate to="/login" />}>
+            
             <Route path="channels/:roomId" element={<Room session={session} />} />
             
+            <Route path="settings" element={<Settings session={session} />} />
+            <Route path="profile" element={<Settings session={session} />} /> 
             <Route index element={
               <div className="flex-1 flex flex-col items-center justify-center text-gray-500 bg-gray-700 h-full">
                 <p className="text-xl">Welcon 2 AESF P2P PROJECT</p>

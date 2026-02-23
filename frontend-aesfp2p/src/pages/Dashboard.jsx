@@ -64,7 +64,7 @@ export default function Dashboard() {
 
       {/* ÁREA PRINCIPAL (CHAT DE TEXTO) */}
       <main className="flex-1 flex flex-col bg-gray-700 min-w-0 relative z-10">
-        <Outlet />
+        <Outlet context={{ profile, setProfile }} />
       </main>
 
       {/* VENTANA FLOTANTE DE VIDEOLLAMADA */}
