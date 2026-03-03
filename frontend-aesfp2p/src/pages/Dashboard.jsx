@@ -54,21 +54,17 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen bg-gray-900 text-white overflow-hidden font-sans relative">
       
-      {/* SIDEBAR */}
       <Sidebar 
           profile={profile}
-          textChannels={textChannels} // Solo pasamos texto
+          textChannels={textChannels}
           roomId={roomId}
           onLogout={handleLogout}
       />
 
-      {/* ÁREA PRINCIPAL (CHAT DE TEXTO) */}
       <main className="flex-1 flex flex-col bg-gray-700 min-w-0 relative z-10">
         <Outlet context={{ profile, setProfile }} />
       </main>
 
-      {/* VENTANA FLOTANTE DE VIDEOLLAMADA */}
-      {/* Se activa automáticamente cuando activeRoomId existe (al crear o unirse) */}
       {activeRoomId && (
         <DraggableWindow 
             isExpanded={isVideoExpanded}
