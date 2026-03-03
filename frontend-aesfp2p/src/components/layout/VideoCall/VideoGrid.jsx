@@ -49,7 +49,6 @@ function RemoteVideo({ stream, username, avatar }) {
             videoRef.current.srcObject = stream;
         }
 
-        // Monitor de tracks para detectar cambios de cámara en tiempo real
         const checkTracks = () => {
             if (!isMounted || !stream) return;
             const videoTrack = stream.getVideoTracks()[0];

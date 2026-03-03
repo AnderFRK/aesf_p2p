@@ -6,7 +6,6 @@ export default function Lobby() {
   const { joinRoom } = useVoice();
   const [inputCode, setInputCode] = useState('');
 
-  // Generar ID aleatorio (ej: "abc-123")
   const createNewMeeting = () => {
     const randomId = Math.random().toString(36).substring(2, 5) + '-' + Math.random().toString(36).substring(2, 5);
     joinRoom(randomId);
@@ -23,10 +22,9 @@ export default function Lobby() {
     <div className="h-full flex flex-col items-center justify-center bg-gray-900 text-white p-4">
       
       <div className="max-w-md w-full bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-700">
-        <h1 className="text-3xl font-bold text-center text-emerald-400 mb-2">AESF Meet</h1>
+        <h1 className="text-3xl font-bold text-center text-emerald-400 mb-2">AESF Call</h1>
         <p className="text-gray-400 text-center mb-8">Videollamadas P2P Seguras y Rápidas</p>
 
-        {/* --- OPCIÓN 1: CREAR --- */}
         <button 
           onClick={createNewMeeting}
           className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 transition-transform hover:scale-[1.02] active:scale-95 mb-6 shadow-lg shadow-emerald-900/20"
@@ -40,8 +38,6 @@ export default function Lobby() {
           <span className="text-gray-500 text-sm">O únete a una</span>
           <div className="h-px bg-gray-700 flex-1"></div>
         </div>
-
-        {/* --- OPCIÓN 2: UNIRSE --- */}
         <form onSubmit={joinExistingMeeting} className="flex gap-2">
           <div className="relative flex-1">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
