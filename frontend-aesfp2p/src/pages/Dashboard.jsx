@@ -7,7 +7,7 @@ import Sidebar from '../components/layout/Sidebar';
 import VideoCall from '../components/layout/VideoCall'; 
 import DraggableWindow from '../components/layout/DraggableWindow';
 
-export default function Dashboard() {
+export default function Dashboard({ session }) {
   const [profile, setProfile] = useState(null);
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,7 +62,7 @@ export default function Dashboard() {
       />
 
       <main className="flex-1 flex flex-col bg-gray-700 min-w-0 relative z-10">
-        <Outlet context={{ profile, setProfile }} />
+        <Outlet context={{ profile, setProfile, session }} />      
       </main>
 
       {activeRoomId && (
