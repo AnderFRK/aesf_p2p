@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
 export default function DraggableWindow({ children, isExpanded }) {
-  // Posición inicial: Esquina inferior derecha
   const [position, setPosition] = useState({ 
     x: window.innerWidth - 340, 
     y: window.innerHeight - 300 
@@ -55,42 +54,36 @@ export default function DraggableWindow({ children, isExpanded }) {
   const handleMouseUp = () => {
     if (!isDragging) return;
     setIsDragging(false);
-    snapToCorner(); // IMÁN A ESQUINAS
+    snapToCorner(); 
   };
 
-  // --- LÓGICA DE LOS 4 CUADRANTES ---
   const snapToCorner = () => {
     const winW = window.innerWidth;
     const winH = window.innerHeight;
-    const myW = 320; // Ancho de la ventana
-    // Estimamos la altura o usamos una referencia, aquí usaremos un aprox seguro
+    const myW = 320; 
     const myH = 300; 
-    const margin = 16; // Margen de separación del borde
+    const margin = 16; 
 
     let { x, y } = position;
 
-    // 1. Calcular el centro de la ventana flotante
     const centerX = x + (myW / 2);
     const centerY = y + (myH / 2);
 
-    // 2. Decidir Horizontal (Izquierda vs Derecha)
     if (centerX < winW / 2) {
-        x = margin; // Pegar a Izquierda
+        x = margin; 
     } else {
-        x = winW - myW - margin; // Pegar a Derecha
+        x = winW - myW - margin; 
     }
 
-    // 3. Decidir Vertical (Arriba vs Abajo)
     if (centerY < winH / 2) {
-        y = margin; // Pegar Arriba
+        y = margin;
     } else {
-        y = winH - myH - margin; // Pegar Abajo
+        y = winH - myH - margin;
     }
 
     setPosition({ x, y });
   };
 
-  // Listeners globales
   useEffect(() => {
     if (isDragging) {
       window.addEventListener('mousemove', handleMouseMove);

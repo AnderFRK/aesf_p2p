@@ -4,7 +4,6 @@ import { PaperAirplaneIcon, XMarkIcon, ArrowDownTrayIcon, UsersIcon, ChatBubbleL
 export default function ChatPanel({ isOpen, onClose, messages = [], onSendMessage, onExport, detectedUsers = [], myAvatar, isHost }) {
   const [text, setText] = useState('');
   
-  // NUEVO: Estado para alternar entre la pestaña de Chat y la de Usuarios
   const [activeTab, setActiveTab] = useState('chat'); 
   
   const messagesEndRef = useRef(null);
