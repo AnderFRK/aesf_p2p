@@ -73,6 +73,7 @@ export default function Dashboard({ session }) {
              <VideoCall 
                 isExpanded={isVideoExpanded}
                 onToggleExpand={() => setIsVideoExpanded(!isVideoExpanded)}
+                profile={profile}
              />
         </DraggableWindow>
       )}

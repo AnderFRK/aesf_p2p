@@ -22,6 +22,11 @@ export function VoiceProvider({ children, session }) {
   const [hasWebcam, setHasWebcam] = useState(true);
   const [hasMic, setHasMic] = useState(true);
 
+  const [messages, setMessages] = useState([]); 
+  const dataConnsRef = useRef({}); 
+  const hostPeerIdRef = useRef(null); 
+  const isHostRef = useRef(false); 
+
   const peerRef = useRef(null);
   const channelRef = useRef(null);
   const streamRef = useRef(null);
@@ -32,8 +37,6 @@ export function VoiceProvider({ children, session }) {
   const myUserId = session?.user?.id || `guest-${Math.floor(Math.random() * 10000)}`;
   const myUsername = session?.user?.user_metadata?.username || 'Usuario';
   const myAvatar = session?.user?.user_metadata?.avatar_url;
-
-
 
   const joinRoom = async (roomId) => {
     if (activeRoomId === roomId) return;
@@ -97,6 +100,10 @@ export function VoiceProvider({ children, session }) {
             setupCallEvents(call, call.peer);
         });
 
+        peer.on('connection', (conn) => {
+            setupDataConnection(conn);
+        });
+
         peer.on('error', (err) => console.error("Peer Error:", err));
 
     } catch (err) {
@@ -108,7 +115,24 @@ export function VoiceProvider({ children, session }) {
   };
 
 
-  const joinSupabaseRoom = (roomId, peerId) => {
+  const joinSupabaseRoom = async (roomId, peerId) => {
+      // 1. Obtenemos la foto y nombre MÁS RECIENTES de la base de datos
+      let realName = myUsername;
+      let realAvatar = myAvatar;
+
+      if (session?.user?.id) {
+          try {
+              const { data } = await supabase.from('profiles').select('username, avatar_url').eq('id', session.user.id).single();
+              if (data) {
+                  realName = data.username || myUsername;
+                  realAvatar = data.avatar_url || myAvatar;
+              }
+          } catch (err) { 
+              console.error("Error obteniendo perfil en la llamada:", err); 
+          }
+      }
+
+      // 2. Nos conectamos al canal de Supabase
       const topic = `room_${roomId}`;
       const uniqueKey = `${myUserId}-${peerId}`;
       const allChannels = supabase.getChannels();
@@ -142,6 +166,8 @@ export function VoiceProvider({ children, session }) {
 
             const amIHost = users.length > 0 && users[0].peerId === peerId;
             setIsHost(amIHost);
+            isHostRef.current = amIHost; 
+            hostPeerIdRef.current = users.length > 0 ? users[0].peerId : null; 
             
             const others = users.filter(u => u.peerId !== peerId);
             setDetectedUsers(others); 
@@ -156,8 +182,8 @@ export function VoiceProvider({ children, session }) {
             if (status === 'SUBSCRIBED') {
                 const trackData = {
                     userId: myUserId,
-                    username: myUsername,
-                    avatar_url: myAvatar,
+                    username: realName,     // Se envía el nombre más actualizado
+                    avatar_url: realAvatar, // Se envía la foto más actualizada
                     peerId: peerId,
                     online_at: myJoinTime.current
                 };
@@ -190,10 +216,18 @@ export function VoiceProvider({ children, session }) {
           streamRef.current = null;
       }
       
+      Object.values(dataConnsRef.current).forEach(conn => {
+          if (conn.open) conn.close();
+      });
+      dataConnsRef.current = {};
+      setMessages([]);
+      hostPeerIdRef.current = null;
+
       setRemoteStreams({});
       setDetectedUsers([]);
       setActiveRoomId(null);
       setIsHost(false);
+      isHostRef.current = false;
       setStatusMsg('Desconectado');
       setCameraOn(false);
   };
@@ -211,6 +245,10 @@ export function VoiceProvider({ children, session }) {
           callsRef.current[pid].close();
           delete callsRef.current[pid];
       }
+      if (dataConnsRef.current[pid]) {
+          dataConnsRef.current[pid].close();
+          delete dataConnsRef.current[pid];
+      }
   };
 
   const callUser = (pid) => {
@@ -220,18 +258,84 @@ export function VoiceProvider({ children, session }) {
           if (call) setupCallEvents(call, pid);
       } catch(e) { console.error(e); }
   };
+
+  const setupDataConnection = (conn) => {
+    conn.on('open', () => {
+        dataConnsRef.current[conn.peer] = conn;
+    });
+    
+    conn.on('data', (data) => {
+        handleReceiveMessage(data, conn.peer);
+    });
+
+    conn.on('close', () => delete dataConnsRef.current[conn.peer]);
+    conn.on('error', () => delete dataConnsRef.current[conn.peer]);
+  };
+
+  const connectData = (pid) => {
+      if (!peerRef.current) return;
+      const conn = peerRef.current.connect(pid);
+      if (conn) setupDataConnection(conn);
+  };
+
+  const handleReceiveMessage = (msg, senderPeerId) => {
+      setMessages(prev => {
+          if (prev.find(m => m.id === msg.id)) return prev;
+          return [...prev, { ...msg, isMine: false }];
+      });
+
+      if (isHostRef.current) {
+          Object.values(dataConnsRef.current).forEach(conn => {
+              if (conn.peer !== senderPeerId && conn.open) {
+                  conn.send(msg);
+              }
+          });
+      }
+  };
+
+  const sendChatMessage = (text) => {
+      if (!text.trim()) return;
+
+      const msg = {
+          id: Date.now() + Math.random(), 
+          text: text.trim(),
+          sender: myUsername,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+
+      setMessages(prev => [...prev, { ...msg, isMine: true }]);
+
+      if (isHostRef.current) {
+          Object.values(dataConnsRef.current).forEach(conn => {
+              if (conn.open) conn.send(msg);
+          });
+      } else {
+          const hostConn = dataConnsRef.current[hostPeerIdRef.current];
+          if (hostConn && hostConn.open) {
+              hostConn.send(msg);
+          } else {
+              console.warn("No se pudo enviar el mensaje, conexión con Host no disponible.");
+          }
+      }
+  };
+
   useEffect(() => {
       if (!activeRoomId || !streamRef.current || !peerRef.current) return;
 
       const interval = setInterval(() => {
           detectedUsers.forEach(u => {
               const targetId = u.peerId;
-              if (remoteStreams[targetId] || callsRef.current[targetId]) return;
-              
               const myTime = new Date(myJoinTime.current).getTime();
               const targetTime = new Date(u.online_at).getTime();
               
-              if (myTime > targetTime) callUser(targetId);
+              if (myTime > targetTime) {
+                  if (!remoteStreams[targetId] && !callsRef.current[targetId]) {
+                      callUser(targetId);
+                  }
+                  if (!dataConnsRef.current[targetId]) {
+                      connectData(targetId);
+                  }
+              }
           });
       }, 2000);
       return () => clearInterval(interval);
@@ -265,23 +369,22 @@ export function VoiceProvider({ children, session }) {
       joinRoom,
       leaveRoom,
       handleManualDisconnect: leaveRoom,
-
       voiceUsers: detectedUsers, 
       detectedUsers, 
       localStream,
       remoteStreams,
-      
       isHost,
       statusMsg,
       supabaseStatus: 'SUBSCRIBED', 
-      
       micOn,
       cameraOn,
       hasMic,
       hasWebcam,
       toggleMic,
       toggleCam: toggleCam,
-      toggleCamera: toggleCam 
+      toggleCamera: toggleCam,
+      messages,
+      sendChatMessage
   };
 
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>;

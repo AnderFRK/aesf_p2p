@@ -1,4 +1,4 @@
-import { VideoCameraIcon, VideoCameraSlashIcon, MicrophoneIcon, PhoneXMarkIcon, ArrowPathIcon } from '@heroicons/react/24/solid';
+import { VideoCameraIcon, VideoCameraSlashIcon, MicrophoneIcon, PhoneXMarkIcon } from '@heroicons/react/24/solid';
 
 export default function Controls({ 
         micOn, 
@@ -6,19 +6,12 @@ export default function Controls({
         toggleMic, 
         toggleCamera, 
         handleManualDisconnect, 
-        handleRefresh,
         hasWebcam,
         hasMic 
     }) {
   return (
     <div className="flex gap-2 items-center">
-        <button 
-            onClick={handleRefresh} 
-            title="Reconectar Señal" 
-            className="p-2 rounded-full bg-blue-600 hover:bg-blue-500 text-white mr-2 transition-colors"
-        >
-            <ArrowPathIcon className="w-4 h-4" />
-        </button>
+        {/* Botón de Micrófono */}
         <button 
             onClick={hasMic ? toggleMic : undefined} 
             disabled={!hasMic}
@@ -34,6 +27,7 @@ export default function Controls({
             <MicrophoneIcon className="w-5 h-5"/>
         </button>
 
+        {/* Botón de Cámara */}
         <button 
             onClick={hasWebcam ? toggleCamera : undefined} 
             disabled={!hasWebcam}
@@ -48,6 +42,8 @@ export default function Controls({
         >
             {cameraOn ? <VideoCameraIcon className="w-5 h-5 text-white"/> : <VideoCameraSlashIcon className="w-5 h-5"/>}
         </button>
+
+        {/* Botón de Colgar */}
         <button 
             onClick={handleManualDisconnect} 
             title="Salir" 
