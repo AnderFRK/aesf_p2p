@@ -189,14 +189,6 @@ export function VoiceProvider({ children, session }) {
                 };
                 
                 await channel.track(trackData);
-
-                const interval = setInterval(() => {
-                    if (channelRef.current === channel && channel.state === 'joined') {
-                        channel.track(trackData);
-                    } else {
-                        clearInterval(interval);
-                    }
-                }, 5000);
             }
         });
   };
